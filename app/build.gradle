@@ -50,6 +50,10 @@ android {
 
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar", "*.aar"])
+    // Bcore-release.aar requires these at runtime, an AAR carries no
+    // transitive dependencies so they must be declared here.
+    implementation "com.github.CodingGay.BlackReflection:core:1.1.2"
+    implementation "com.github.tiann:FreeReflection:3.1.0"
     // download the latest .aar file  fromm https://t.me/blackbox_apks and paste that to libs directory and sync projecr
 
 //     implementation project(':Bcore')
