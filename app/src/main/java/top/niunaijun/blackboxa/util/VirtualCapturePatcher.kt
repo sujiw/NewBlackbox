@@ -49,7 +49,7 @@ object VirtualCapturePatcher {
             val sdk = readTargetSdk(info.packageName)
             AppCapture(
                 packageName = info.packageName,
-                label = info.loadLabel(BlackBoxCore.get().packageManager).toString(),
+                label = info.loadLabel(BlackBoxCore.getPackageManager()).toString(),
                 targetSdk = sdk ?: info.targetSdkVersion,
                 confExists = sdk != null
             )
@@ -95,7 +95,6 @@ object VirtualCapturePatcher {
         try {
             parcel.unmarshall(bytes, 0, bytes.size)
             parcel.setDataPosition(0)
-            parcel.setClassLoader(BPackageSettings::class.java.getClassLoader())
             return BPackageSettings.CREATOR.createFromParcel(parcel)
                 ?: throw CertException("bad package.conf")
         } finally {

@@ -15,7 +15,7 @@ import java.util.Date
 import java.util.Locale
 import javax.security.auth.x500.X500Principal
 
-class CertException(message: String) : Exception(message)
+open class CertException(message: String) : Exception(message)
 
 class CertPasswordException(message: String) : CertException(message)
 
