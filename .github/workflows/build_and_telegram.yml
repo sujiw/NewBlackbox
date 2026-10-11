@@ -12,21 +12,29 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # android-actions/setup-android@v3 crashes on the Node24 runners,
+      # install the command line tools directly instead.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
+        run: |
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          cd "$ANDROID_HOME/cmdline-tools"
+          curl -sSL -o clt.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q clt.zip
+          rm -f clt.zip
+          mv cmdline-tools latest
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
@@ -37,6 +45,13 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: blackbox-apks
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
       - name: Find APK paths
         id: apk_paths
         run: |
@@ -45,10 +60,16 @@ jobs:
           echo "debug_apk_path=$DEBUG_APK" >> $GITHUB_OUTPUT
           echo "release_apk_path=$RELEASE_APK" >> $GITHUB_OUTPUT
 
+      # This fork ships the engine as a prebuilt AAR in app/libs, the Bcore
+      # module and the Telegram secrets only exist upstream: keep the steps
+      # but skip them when unusable.
       - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+        if: env.TELEGRAM_BOT_TOKEN != ''
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: Send Debug APK to Telegram and Pin
+        if: env.TELEGRAM_BOT_TOKEN != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -59,11 +80,14 @@ jobs:
                -F caption="[DEBUG] $COMMIT_MSG" \
                https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument)
           MESSAGE_ID=$(echo $RESPONSE | jq '.result.message_id')
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
-            -d chat_id="$TELEGRAM_CHAT_ID" \
-            -d message_id="$MESSAGE_ID"
+          if [ "$MESSAGE_ID" != "null" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
+              -d chat_id="$TELEGRAM_CHAT_ID" \
+              -d message_id="$MESSAGE_ID"
+          fi
 
       - name: Send Release APK to Telegram and Pin
+        if: env.TELEGRAM_BOT_TOKEN != ''
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -74,74 +98,12 @@ jobs:
                -F caption="[RELEASE] $COMMIT_MSG" \
                https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument)
           MESSAGE_ID=$(echo $RESPONSE | jq '.result.message_id')
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
-            -d chat_id="$TELEGRAM_CHAT_ID" \
-            -d message_id="$MESSAGE_ID"
+          if [ "$MESSAGE_ID" != "null" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
+              -d chat_id="$TELEGRAM_CHAT_ID" \
+              -d message_id="$MESSAGE_ID"
+          fi
 
       - name: Build Bcore AAR
+        if: hashFiles('Bcore/build.gradle') != ''
         run: ./gradlew :Bcore:assembleRelease
-
-      - name: Find Bcore AAR path
-        id: aar_path
-        run: |
-          AAR=$(find ./Bcore/build/outputs/aar -name "*.aar" | head -n 1)
-          echo "aar_path=$AAR" >> $GITHUB_OUTPUT
-
-      - name: Send Bcore AAR to Telegram and Pin
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          RESPONSE=$(curl -s -F document=@"${{ steps.aar_path.outputs.aar_path }}" \
-               -F chat_id="$TELEGRAM_CHAT_ID" \
-               -F caption="[Bcore AAR] $COMMIT_MSG" \
-               https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument)
-          MESSAGE_ID=$(echo $RESPONSE | jq '.result.message_id')
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
-            -d chat_id="$TELEGRAM_CHAT_ID" \
-            -d message_id="$MESSAGE_ID"
-
-      - name: Build Bcore Debug AAR
-        run: ./gradlew :Bcore:assembleDebug
-
-      - name: Build Bcore Release AAR
-        run: ./gradlew :Bcore:assembleRelease
-
-      - name: Find Bcore AAR paths
-        id: aar_paths
-        run: |
-          DEBUG_AAR=$(find ./Bcore/build/outputs/aar -name "*debug.aar" | head -n 1)
-          RELEASE_AAR=$(find ./Bcore/build/outputs/aar -name "*release.aar" | head -n 1)
-          echo "debug_aar_path=$DEBUG_AAR" >> $GITHUB_OUTPUT
-          echo "release_aar_path=$RELEASE_AAR" >> $GITHUB_OUTPUT
-
-      - name: Send Bcore Debug AAR to Telegram and Pin
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          RESPONSE=$(curl -s -F document=@"${{ steps.aar_paths.outputs.debug_aar_path }}" \
-               -F chat_id="$TELEGRAM_CHAT_ID" \
-               -F caption="[Bcore DEBUG AAR] $COMMIT_MSG" \
-               https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument)
-          MESSAGE_ID=$(echo $RESPONSE | jq '.result.message_id')
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
-            -d chat_id="$TELEGRAM_CHAT_ID" \
-            -d message_id="$MESSAGE_ID"
-
-      - name: Send Bcore Release AAR to Telegram and Pin
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          RESPONSE=$(curl -s -F document=@"${{ steps.aar_paths.outputs.release_aar_path }}" \
-               -F chat_id="$TELEGRAM_CHAT_ID" \
-               -F caption="[Bcore RELEASE AAR] $COMMIT_MSG" \
-               https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument)
-          MESSAGE_ID=$(echo $RESPONSE | jq '.result.message_id')
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/pinChatMessage" \
-            -d chat_id="$TELEGRAM_CHAT_ID" \
-            -d message_id="$MESSAGE_ID"
