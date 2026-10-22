@@ -14,6 +14,16 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/main_task_mode"
+        android:title="@string/task_mode"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/main_automation"
+        android:title="@string/automation"
+        app:showAsAction="never" />
+
+    <item
             android:id="@+id/main_git"
             android:title="@string/open_source_path"
             app:showAsAction="never" />

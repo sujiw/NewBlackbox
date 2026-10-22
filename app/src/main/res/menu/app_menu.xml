@@ -7,4 +7,10 @@
 
     <item android:id="@+id/app_remove" android:title="@string/app_remove"/>
     <item android:id="@+id/app_shortcut" android:title="@string/app_shortcut"/>
+
+    <item android:id="@+id/app_proxy" android:title="@string/app_proxy"/>
+
+    <item android:id="@+id/app_gaid" android:title="@string/app_gaid"/>
+
+    <item android:id="@+id/app_config" android:title="@string/config_title"/>
 </menu>

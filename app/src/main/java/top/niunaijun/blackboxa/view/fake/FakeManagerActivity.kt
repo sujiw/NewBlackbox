@@ -71,7 +71,7 @@ class FakeManagerActivity : BaseActivity() {
             message(text = getString(R.string.close_app_fake_location,item.name))
             negativeButton(R.string.cancel)
             positiveButton(R.string.done){
-                BLocationManager.disableFakeLocation(currentUserID(),item.packageName)
+                BLocationManager.disableFakeLocation(0, item.packageName)
                 toast(getString(R.string.close_fake_location_success,item.name))
                 item.fakeLocationPattern = BLocationManager.CLOSE_MODE
                 mAdapter.replaceAt(position,item)
@@ -121,7 +121,7 @@ class FakeManagerActivity : BaseActivity() {
 
     private fun loadAppList() {
         viewBinding.stateView.showLoading()
-        viewModel.getInstallAppList(currentUserID())
+        viewModel.getInstallAppList()
     }
 
     private val locationResult =
@@ -133,8 +133,8 @@ class FakeManagerActivity : BaseActivity() {
                     val longitude = data.getDoubleExtra("longitude", 0.0)
                     val pkg = data.getStringExtra("pkg")
 
-                    viewModel.setPattern(currentUserID(), pkg.toString(), BLocationManager.OWN_MODE)
-                    viewModel.setLocation(currentUserID(), pkg.toString(), BLocation(latitude, longitude))
+                    viewModel.setPattern(pkg.toString(), BLocationManager.OWN_MODE)
+                    viewModel.setLocation(pkg.toString(), BLocation(latitude, longitude))
 
                     toast(getString(R.string.set_location,latitude.toString(), longitude.toString()))
 

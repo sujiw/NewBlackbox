@@ -1,0 +1,8 @@
+package black.com.android.internal.telephony;
+
+import top.niunaijun.blackreflection.annotation.BClassNameNotProcess;
+
+/* JADX INFO: loaded from: classes.jar:black/com/android/internal/telephony/ITelephonyRegistryStatic.class */
+@BClassNameNotProcess("com.android.internal.telephony.ITelephonyRegistry")
+public interface ITelephonyRegistryStatic {
+}

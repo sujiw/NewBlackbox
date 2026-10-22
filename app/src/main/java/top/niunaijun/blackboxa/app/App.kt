@@ -5,6 +5,10 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackboxa.api.ApiService
+import top.niunaijun.blackboxa.api.ApiSettings
+import top.niunaijun.blackboxa.task.TaskEngine
+import top.niunaijun.blackboxa.task.TaskMode
 
 /**
  *
@@ -69,8 +73,21 @@ class App : Application() {
         try {
             super.onCreate()
             AppManager.doOnCreate(mContext)
+            TaskMode.init(mContext)
+            TaskEngine.ensureInit(mContext)
+            startApiIfEnabled()
         } catch (e: Exception) {
             Log.e("App", "Error in onCreate: ${e.message}")
+        }
+    }
+
+    private fun startApiIfEnabled() {
+        try {
+            if (ApiSettings.isEnabled(mContext)) {
+                ApiService.start(mContext)
+            }
+        } catch (e: Throwable) {
+            Log.e("App", "Error starting api service: ${e.message}")
         }
     }
 }

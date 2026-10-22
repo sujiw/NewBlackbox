@@ -16,6 +16,32 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory app:title="@string/api_category">
+
+        <SwitchPreferenceCompat
+                app:key="api_enable"
+                app:title="@string/api_service"
+                app:summary="@string/api_service_summary" />
+
+        <EditTextPreference
+                app:key="api_port"
+                app:title="@string/api_port"
+                app:summary="@string/api_port_summary"
+                app:defaultValue="8080"
+                android:inputType="number" />
+
+        <Preference
+                app:key="api_token"
+                app:title="@string/api_token"
+                app:summary="@string/api_token_summary" />
+
+        <Preference
+                app:key="api_files_access"
+                app:title="@string/api_files_access"
+                app:summary="@string/api_files_access_summary" />
+
+    </PreferenceCategory>
+
     <PreferenceCategory app:title="@string/other">
 
         <Preference

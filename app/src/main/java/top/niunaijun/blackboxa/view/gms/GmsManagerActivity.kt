@@ -54,15 +54,10 @@ class GmsManagerActivity : LoadingActivity() {
             }
 
             val items = mAdapter.getItems()
-            for (index in items.indices) {
-                val bean = items[index]
-                if (bean.userID == result.userID) {
-                    if (result.success) {
-                        bean.isInstalledGms = !bean.isInstalledGms
-                    }
-                    mAdapter.replaceAt( index,bean)
-                    break
-                }
+            if (items.isNotEmpty() && result.success) {
+                val bean = items[0]
+                bean.isInstalledGms = !bean.isInstalledGms
+                mAdapter.replaceAt(0, bean)
             }
 
             hideLoading()
@@ -78,7 +73,7 @@ class GmsManagerActivity : LoadingActivity() {
             }
         }
 
-        viewModel.getInstalledUser()
+        viewModel.getInstalledState()
     }
 
     private fun initRecyclerView() {
@@ -86,22 +81,22 @@ class GmsManagerActivity : LoadingActivity() {
             .setItemClickListener { view, item, _ ->
                 val checkbox = view.findViewById<Switch>(R.id.checkbox)
                 if (item.isInstalledGms) {
-                    uninstallGms(item.userID, checkbox)
+                    uninstallGms(checkbox)
                 } else {
-                    installGms(item.userID, checkbox)
+                    installGms(checkbox)
                 }
             }
         viewBinding.recyclerView.layoutManager = LinearLayoutManager(this)
 
     }
 
-    private fun installGms(userID: Int, checkbox: Switch){
+    private fun installGms(checkbox: Switch) {
         MaterialDialog(this).show {
             title(R.string.enable_gms)
             message(R.string.enable_gms_hint)
-            positiveButton(R.string.done){
+            positiveButton(R.string.done) {
                 showLoading()
-                viewModel.installGms(userID)
+                viewModel.installGms()
             }
             negativeButton(R.string.cancel){
                 checkbox.isChecked = !checkbox.isChecked
@@ -109,13 +104,13 @@ class GmsManagerActivity : LoadingActivity() {
         }
     }
 
-    private fun uninstallGms(userID: Int, checkbox: Switch){
+    private fun uninstallGms(checkbox: Switch) {
         MaterialDialog(this).show {
             title(R.string.disable_gms)
             message(R.string.disable_gms_hint)
-            positiveButton(R.string.done){
+            positiveButton(R.string.done) {
                 showLoading()
-                viewModel.uninstallGms(userID)
+                viewModel.uninstallGms()
             }
             negativeButton(R.string.cancel){
                 checkbox.isChecked = !checkbox.isChecked

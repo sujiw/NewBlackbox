@@ -10,8 +10,12 @@ import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.BlackBoxCore.getPackageManager
 import top.niunaijun.blackbox.utils.AbiUtils
 import top.niunaijun.blackboxa.R
+import top.niunaijun.blackboxa.app.App
 import top.niunaijun.blackboxa.app.AppManager
+import top.niunaijun.blackboxa.bean.AppDeviceStore
+import top.niunaijun.blackboxa.bean.AppGaidStore
 import top.niunaijun.blackboxa.bean.AppInfo
+import top.niunaijun.blackboxa.bean.AppProxyStore
 import top.niunaijun.blackboxa.bean.InstalledAppBean
 import top.niunaijun.blackboxa.util.getString
 import top.niunaijun.blackbox.fake.frameworks.BResourcesManager
@@ -28,6 +32,37 @@ import java.io.File
 class AppsRepository {
     val TAG: String = "AppsRepository"
     private var mInstalledList = mutableListOf<AppInfo>()
+
+    companion object {
+        /** The container is single user, every api call uses user 0. */
+        private const val USER_ID = 0
+        private const val KEY_APP_SORT = "AppList"
+        private const val LEGACY_KEY_APP_SORT = "AppList0"
+    }
+
+    /** Reads the saved order, migrating the legacy per-user key once. */
+    private fun readSortList(): String? {
+        val prefs = AppManager.mRemarkSharedPreferences
+        val current = prefs.getString(KEY_APP_SORT, null)
+        if (current != null) {
+            return current
+        }
+        val legacy = prefs.getString(LEGACY_KEY_APP_SORT, null)
+        if (legacy != null) {
+            prefs.edit {
+                putString(KEY_APP_SORT, legacy)
+                remove(LEGACY_KEY_APP_SORT)
+            }
+        }
+        return legacy
+    }
+
+    private fun writeSortList(value: String) {
+        AppManager.mRemarkSharedPreferences.edit {
+            putString(KEY_APP_SORT, value)
+            remove(LEGACY_KEY_APP_SORT)
+        }
+    }
     
     /**
      * Safely load app label with fallback to package name
@@ -91,7 +126,6 @@ class AppsRepository {
     }
 
     fun getInstalledAppList(
-        userID: Int,
         loadingLiveData: MutableLiveData<Boolean>,
         appsLiveData: MutableLiveData<List<InstalledAppBean>>
     ) {
@@ -106,7 +140,7 @@ class AppsRepository {
                         it.icon, // Remove the !! operator to allow null icons
                         it.packageName,
                         it.sourceDir,
-                        blackBoxCore.isInstalled(it.packageName, userID)
+                        blackBoxCore.isInstalled(it.packageName, USER_ID)
                     )
                 }
                 appsLiveData.postValue(newInstalledList)
@@ -148,36 +182,26 @@ class AppsRepository {
         }
     }
 
-    fun getVmInstallList(userId: Int, appsLiveData: MutableLiveData<List<AppInfo>>) {
+    fun getVmInstallList(appsLiveData: MutableLiveData<List<AppInfo>>) {
         try {
             val blackBoxCore = BlackBoxCore.get()
-            
-            // Add debugging for users
-            val users = blackBoxCore.users
-            Log.d(TAG, "getVmInstallList: userId=$userId, total users=${users.size}")
-            users.forEach { user ->
-                Log.d(TAG, "User: id=${user.id}, name=${user.name}")
-            }
-            
-            val sortListData =
-                AppManager.mRemarkSharedPreferences.getString("AppList$userId", "")
-            val sortList = sortListData?.split(",")
 
-            val applicationList = blackBoxCore.getInstalledApplications(0, userId)
-            
+            val sortList = readSortList()?.split(",")
+
+            val applicationList = blackBoxCore.getInstalledApplications(0, USER_ID)
+
             // Add null check for applicationList
             if (applicationList == null) {
-                Log.e(TAG, "getVmInstallList: applicationList is null for userId=$userId")
+                Log.e(TAG, "getVmInstallList: applicationList is null")
                 appsLiveData.postValue(emptyList())
                 return
             }
-            
-            // Add debugging
-            Log.d(TAG, "getVmInstallList: userId=$userId, applicationList.size=${applicationList.size}")
+
+            Log.d(TAG, "getVmInstallList: applicationList.size=${applicationList.size}")
             if (applicationList.isNotEmpty()) {
                 Log.d(TAG, "First app: ${applicationList.first().packageName}")
             } else {
-                Log.w(TAG, "getVmInstallList: No applications found for userId=$userId")
+                Log.w(TAG, "getVmInstallList: No applications found")
             }
 
             val appInfoList = mutableListOf<AppInfo>()
@@ -234,34 +258,42 @@ class AppsRepository {
         }
     }
 
-    fun installApk(source: String, userId: Int, resultLiveData: MutableLiveData<String>) {
+    fun installApk(source: String, resultLiveData: MutableLiveData<String>) {
         try {
             val blackBoxCore = BlackBoxCore.get()
             val installResult = if (URLUtil.isValidUrl(source)) {
                 val uri = Uri.parse(source)
-                blackBoxCore.installPackageAsUser(uri, userId)
+                blackBoxCore.installPackageAsUser(uri, USER_ID)
             } else {
-                blackBoxCore.installPackageAsUser(source, userId)
+                blackBoxCore.installPackageAsUser(source, USER_ID)
             }
 
             if (installResult.success) {
-                updateAppSortList(userId, installResult.packageName, true)
+                updateAppSortList(installResult.packageName, true)
                 resultLiveData.postValue(getString(R.string.install_success))
             } else {
                 resultLiveData.postValue(getString(R.string.install_fail, installResult.msg))
             }
-            scanUser()
         } catch (e: Exception) {
             Log.e(TAG, "Error installing APK: ${e.message}")
             resultLiveData.postValue("Installation failed: ${e.message}")
         }
     }
 
-    fun unInstall(packageName: String, userID: Int, resultLiveData: MutableLiveData<String>) {
+    fun unInstall(packageName: String, resultLiveData: MutableLiveData<String>) {
         try {
-            BlackBoxCore.get().uninstallPackageAsUser(packageName, userID)
-            updateAppSortList(userID, packageName, false)
-            scanUser()
+            // Stop first so a foreground task does not keep a dead proxy activity.
+            try {
+                BlackBoxCore.get().stopPackage(packageName, USER_ID)
+            } catch (e: Exception) {
+                Log.w(TAG, "stop before uninstall failed: ${e.message}")
+            }
+            BlackBoxCore.get().uninstallPackageAsUser(packageName, USER_ID)
+            updateAppSortList(packageName, false)
+            val context = App.getContext()
+            AppProxyStore.remove(context, packageName)
+            AppGaidStore.remove(context, packageName)
+            AppDeviceStore.remove(context, packageName)
             resultLiveData.postValue(getString(R.string.uninstall_success))
         } catch (e: Exception) {
             Log.e(TAG, "Error uninstalling APK: ${e.message}")
@@ -269,9 +301,9 @@ class AppsRepository {
         }
     }
 
-    fun launchApk(packageName: String, userId: Int, launchLiveData: MutableLiveData<Boolean>) {
+    fun launchApk(packageName: String, launchLiveData: MutableLiveData<Boolean>) {
         try {
-            val result = BlackBoxCore.get().launchApk(packageName, userId)
+            val result = BlackBoxCore.get().launchApk(packageName, USER_ID)
             launchLiveData.postValue(result)
         } catch (e: Exception) {
             Log.e(TAG, "Error launching APK: ${e.message}")
@@ -279,9 +311,9 @@ class AppsRepository {
         }
     }
 
-    fun clearApkData(packageName: String, userID: Int, resultLiveData: MutableLiveData<String>) {
+    fun clearApkData(packageName: String, resultLiveData: MutableLiveData<String>) {
         try {
-            BlackBoxCore.get().clearPackage(packageName, userID)
+            BlackBoxCore.get().clearPackage(packageName, USER_ID)
             resultLiveData.postValue(getString(R.string.clear_success))
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing APK data: ${e.message}")
@@ -290,48 +322,16 @@ class AppsRepository {
     }
 
     /**
-     * 倒序递归扫描用户，
-     * 如果用户是空的，就删除用户，删除用户备注，删除应用排序列表
-     */
-    private fun scanUser() {
-        try {
-            val blackBoxCore = BlackBoxCore.get()
-            val userList = blackBoxCore.users
-
-            if (userList.isEmpty()) {
-                return
-            }
-
-            val id = userList.last().id
-
-            if (blackBoxCore.getInstalledApplications(0, id).isEmpty()) {
-                blackBoxCore.deleteUser(id)
-                AppManager.mRemarkSharedPreferences.edit {
-                    remove("Remark$id")
-                    remove("AppList$id")
-                }
-                scanUser()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in scanUser: ${e.message}")
-        }
-    }
-
-    /**
      * 更新排序列表
-     * @param userID Int
      * @param pkg String
      * @param isAdd Boolean true是添加，false是移除
      */
-    private fun updateAppSortList(userID: Int, pkg: String, isAdd: Boolean) {
+    private fun updateAppSortList(pkg: String, isAdd: Boolean) {
         try {
-            val savedSortList =
-                AppManager.mRemarkSharedPreferences.getString("AppList$userID", "")
+            val savedSortList = readSortList().orEmpty()
 
             val sortList = linkedSetOf<String>()
-            if (savedSortList != null) {
-                sortList.addAll(savedSortList.split(","))
-            }
+            sortList.addAll(savedSortList.split(",").filter { it.isNotEmpty() })
 
             if (isAdd) {
                 sortList.add(pkg)
@@ -339,9 +339,7 @@ class AppsRepository {
                 sortList.remove(pkg)
             }
 
-            AppManager.mRemarkSharedPreferences.edit {
-                putString("AppList$userID", sortList.joinToString(","))
-            }
+            writeSortList(sortList.joinToString(","))
         } catch (e: Exception) {
             Log.e(TAG, "Error updating app sort list: ${e.message}")
         }
@@ -350,12 +348,9 @@ class AppsRepository {
     /**
      * 保存排序后的apk顺序
      */
-    fun updateApkOrder(userID: Int, dataList: List<AppInfo>) {
+    fun updateApkOrder(dataList: List<AppInfo>) {
         try {
-            AppManager.mRemarkSharedPreferences.edit {
-                putString("AppList$userID",
-                    dataList.joinToString(",") { it.packageName })
-            }
+            writeSortList(dataList.joinToString(",") { it.packageName })
         } catch (e: Exception) {
             Log.e(TAG, "Error updating APK order: ${e.message}")
         }

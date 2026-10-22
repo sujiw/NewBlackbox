@@ -1,6 +1,7 @@
 *.iml
 *.idea
 .gradle
+.tmp
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -17,3 +18,7 @@
 .cxx
 local.properties
 /app/release/
+# native / gradle build outputs
+**/build/
+Bcore/.cxx/
+Bcore/prebuilt_backup/

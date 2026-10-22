@@ -18,10 +18,11 @@ class ShortcutActivity:AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val pkg = intent.getStringExtra("pkg")
-        val userID = intent.getIntExtra("userId",0)
 
         lifecycleScope.launch {
-            BlackBoxCore.get().launchApk(pkg,userID)
+            // Shortcuts created by older builds still carry a "userId" extra;
+            // the container is single user now, so it is ignored.
+            BlackBoxCore.get().launchApk(pkg, 0)
             finish()
         }
     }

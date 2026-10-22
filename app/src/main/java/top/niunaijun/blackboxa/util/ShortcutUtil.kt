@@ -26,17 +26,15 @@ object ShortcutUtil {
 
     /**
      * 创建桌面快捷方式
-     * @param userID Int userID
      * @param info AppInfo
      */
-    fun createShortcut(context: Context,userID: Int, info: AppInfo) {
+    fun createShortcut(context: Context, info: AppInfo) {
 
         if (ShortcutManagerCompat.isRequestPinShortcutSupported(context)) {
-            val labelName = info.name + userID
+            val labelName = info.name
             val intent = Intent(context, ShortcutActivity::class.java)
                 .setAction(Intent.ACTION_MAIN)
                 .putExtra("pkg", info.packageName)
-                .putExtra("userId", userID)
             MaterialDialog(context).show {
                 title(res = R.string.app_shortcut)
                 input(
@@ -45,7 +43,7 @@ object ShortcutUtil {
                 ) { _, input ->
 
                     val shortcutInfo: ShortcutInfoCompat =
-                        ShortcutInfoCompat.Builder(context, info.packageName + userID)
+                        ShortcutInfoCompat.Builder(context, info.packageName)
                             .setIntent(intent)
                             .setShortLabel(input)
                             .setLongLabel(input)

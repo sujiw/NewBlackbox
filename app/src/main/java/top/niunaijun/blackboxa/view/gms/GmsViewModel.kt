@@ -18,21 +18,21 @@ class GmsViewModel(private val mRepo: GmsRepository) : BaseViewModel() {
 
     val mUpdateInstalledLiveData = MutableLiveData<GmsInstallBean>()
 
-    fun getInstalledUser() {
+    fun getInstalledState() {
         launchOnUI {
             mRepo.getGmsInstalledList(mInstalledLiveData)
         }
     }
 
-    fun installGms(userID: Int) {
+    fun installGms() {
         launchOnUI {
-            mRepo.installGms(userID,mUpdateInstalledLiveData)
+            mRepo.installGms(mUpdateInstalledLiveData)
         }
     }
 
-    fun uninstallGms(userID: Int) {
+    fun uninstallGms() {
         launchOnUI {
-            mRepo.uninstallGms(userID,mUpdateInstalledLiveData)
+            mRepo.uninstallGms(mUpdateInstalledLiveData)
         }
     }
 }

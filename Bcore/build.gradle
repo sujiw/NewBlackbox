@@ -1,0 +1,87 @@
+plugins {
+    alias(libs.plugins.android.library)
+}
+
+android {
+    namespace 'top.niunaijun.blackbox'
+    compileSdk 35
+    ndkVersion = "28.1.13356709"
+
+    defaultConfig {
+        minSdk 24
+        consumerProguardFiles 'proguard-rules.pro'
+
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=c++_static'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+
+    packagingOptions {
+        // prefab 与 AAR jni 会各带一份 libshadowhook.so
+        jniLibs {
+            pickFirsts += ['**/libshadowhook.so']
+        }
+    }
+
+buildFeatures {
+        // ShadowHook 以 prefab 形式提供头文件与 .so
+        prefab true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig true
+        aidl true
+    }
+
+    packagingOptions {
+        jniLibs {
+            // The engine extracts libblackbox.so at runtime, it must not be
+            // stored uncompressed / page-aligned inside the APK.
+            useLegacyPackaging true
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    // 16KB page size 安全的 inline hook 引擎（替代 Dobby）
+    implementation 'com.bytedance.android:shadowhook:1.1.1'
+    // Required by the engine: reflection helpers and hidden-API bypass.
+    api "com.github.CodingGay.BlackReflection:core:1.1.2"
+    api "com.github.tiann:FreeReflection:3.1.0"
+    // Hidden API exemption for Android 9+, required because the native
+    // libblackbox.so bypass no longer works on Android 14/15.
+    api "org.lsposed.hiddenapibypass:hiddenapibypass:4.3"
+
+    api "androidx.core:core:1.13.1"
+    api "androidx.appcompat:appcompat:1.7.0"
+}

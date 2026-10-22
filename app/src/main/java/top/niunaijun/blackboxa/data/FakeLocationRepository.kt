@@ -21,46 +21,41 @@ import top.niunaijun.blackboxa.bean.FakeLocationBean
 class FakeLocationRepository {
     val TAG: String = "FakeLocationRepository"
 
-    fun setPattern(userId: Int, pkg: String, pattern: Int) {
-        BLocationManager.get().setPattern(userId, pkg, pattern)
+    companion object {
+        /** The container is single user, every api call uses user 0. */
+        private const val USER_ID = 0
     }
 
-    private fun getPattern(userId: Int, pkg: String): Int {
-        return BLocationManager.get().getPattern(userId, pkg)
+    fun setPattern(pkg: String, pattern: Int) {
+        BLocationManager.get().setPattern(USER_ID, pkg, pattern)
     }
 
-    private fun getLocation(userId: Int, pkg: String): BLocation? {
-        return BLocationManager.get().getLocation(userId, pkg)
+    private fun getPattern(pkg: String): Int {
+        return BLocationManager.get().getPattern(USER_ID, pkg)
     }
 
-    fun setLocation(userId: Int, pkg: String, location: BLocation) {
-        BLocationManager.get().setLocation(userId, pkg, location)
+    private fun getLocation(pkg: String): BLocation? {
+        return BLocationManager.get().getLocation(USER_ID, pkg)
+    }
+
+    fun setLocation(pkg: String, location: BLocation) {
+        BLocationManager.get().setLocation(USER_ID, pkg, location)
     }
 
     fun getInstalledAppList(
-        userID: Int,
         appsFakeLiveData: MutableLiveData<List<FakeLocationBean>>
     ) {
         val installedList = mutableListOf<FakeLocationBean>()
         val installedApplications: List<ApplicationInfo> =
-            BlackBoxCore.get().getInstalledApplications(0, userID)
+            BlackBoxCore.get().getInstalledApplications(0, USER_ID)
         // List<ApplicationInfo> -> List<FakeLocationBean>
         for (installedApplication in installedApplications) {
-//            val file = File(installedApplication.sourceDir)
-//
-//            if ((installedApplication.flags and ApplicationInfo.FLAG_SYSTEM) != 0) continue
-//
-//            if (!AbiUtils.isSupport(file)) continue
-//
-//            val isXpModule = BlackBoxCore.get().isXposedModule(file)
-
             val info = FakeLocationBean(
-                userID,
                 installedApplication.loadLabel(BlackBoxCore.getPackageManager()).toString(),
                 installedApplication.loadIcon(BlackBoxCore.getPackageManager()),
                 installedApplication.packageName,
-                getPattern(userID, installedApplication.packageName),
-                getLocation(userID, installedApplication.packageName)
+                getPattern(installedApplication.packageName),
+                getLocation(installedApplication.packageName)
             )
             installedList.add(info)
         }

@@ -15,7 +15,7 @@
             android:layout_marginStart="16dp"
             android:textColor="@color/primary_text"
             android:textSize="18sp"
-            tools:text="User1" />
+            tools:text="Google Play services" />
 
     <Switch
             android:id="@+id/checkbox"

@@ -22,7 +22,7 @@
     <string name="hider">偽裝</string>
     <string name="hide_root">隱藏Root</string>
     <string name="hide_xposed">隱藏Xposed</string>
-    <string name="userRemark">用戶備註</string>
+
     <string name="done">確定</string>
     <string name="cancel">取消</string>
     <string name="permission_setting">許可權設定</string>
@@ -56,6 +56,7 @@
     <string name="other">其他</string>
     <string name="daemon_enable">守護進程</string>
     <string name="gms_manager">GMS管理</string>
+    <string name="gms_service_name">Google 服務</string>
     <string name="jump_gms">去找GMS管理</string>
     <string name="enable_gms">啟用服務</string>
     <string name="enable_gms_hint">開放穀歌服務可以讓Youtube和其他高度依賴穀歌播放服務的軟件正常運行。</string>

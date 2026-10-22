@@ -30,7 +30,7 @@ object RockerManager {
 
     private const val Eb = 6356725     //   极半径 
 
-    fun init(application: Application?, userId: Int) {
+    fun init(application: Application?) {
 
         if (application == null || !BLocationManager.isFakeLocationEnable()) {
             return
@@ -40,7 +40,7 @@ object RockerManager {
 
         if (enFloatView is EnFloatView) {
             enFloatView.setListener { angle: Float, distance: Float ->
-                changeLocation(distance, angle, application.packageName,userId)
+                changeLocation(distance, angle, application.packageName)
             }
         }
 
@@ -77,8 +77,8 @@ object RockerManager {
         return FloatingView.get().view
     }
 
-    private fun changeLocation(distance: Float, angle: Float, packageName: String, userId: Int) {
-        val location = BLocationManager.get().getLocation(userId, packageName)
+    private fun changeLocation(distance: Float, angle: Float, packageName: String) {
+        val location = BLocationManager.get().getLocation(0, packageName)
 
         val dx = distance  * sin(angle * Math.PI / 180.0)
         val dy = distance  * cos(angle * Math.PI / 180.0)
@@ -92,7 +92,7 @@ object RockerManager {
         val newLat = (dy / ec + location.latitude * Math.PI / 180.0) * 180.0 / Math.PI
         val newLocation = BLocation(newLat, newLng)
 
-        BLocationManager.get().setLocation(userId, packageName, newLocation)
+        BLocationManager.get().setLocation(0, packageName, newLocation)
     }
 
 

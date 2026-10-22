@@ -68,13 +68,12 @@ class ListActivity : BaseActivity() {
     private fun initViewModel() {
         viewModel = ViewModelProvider(this, InjectionUtil.getListFactory()).get(ListViewModel::class.java)
         val onlyShowXp = intent.getBooleanExtra("onlyShowXp", false)
-        val userID = intent.getIntExtra("userID",0)
 
         if (onlyShowXp) {
             viewModel.getInstalledModules()
             viewBinding.toolbarLayout.toolbar.setTitle(R.string.installed_module)
         } else {
-            viewModel.getInstallAppList(userID)
+            viewModel.getInstallAppList()
             viewBinding.toolbarLayout.toolbar.setTitle(R.string.installed_app)
         }
 

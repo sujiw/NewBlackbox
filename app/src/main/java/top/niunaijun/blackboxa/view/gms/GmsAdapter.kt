@@ -25,7 +25,7 @@ class GmsAdapter : RVHolderFactory() {
 
         private val binding = ItemGmsBinding.bind(itemView)
         override fun setContent(item: GmsBean, isSelected: Boolean, payload: Any?) {
-            binding.tvTitle.text = item.userName
+            binding.tvTitle.text = itemView.context.getString(R.string.gms_service_name)
             binding.checkbox.isChecked = item.isInstalledGms
             binding.checkbox.setOnCheckedChangeListener  { buttonView, _ ->
                 if(buttonView.isPressed){

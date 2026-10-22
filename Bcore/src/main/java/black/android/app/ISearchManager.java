@@ -1,0 +1,18 @@
+package black.android.app;
+
+import android.os.IBinder;
+import android.os.IInterface;
+import top.niunaijun.blackreflection.annotation.BClassName;
+import top.niunaijun.blackreflection.annotation.BStaticMethod;
+
+/* JADX INFO: loaded from: classes.jar:black/android/app/ISearchManager.class */
+@BClassName("android.app.ISearchManager")
+public interface ISearchManager {
+
+    /* JADX INFO: loaded from: classes.jar:black/android/app/ISearchManager$Stub.class */
+    @BClassName("android.app.ISearchManager$Stub")
+    public interface Stub {
+        @BStaticMethod
+        IInterface asInterface(IBinder iBinder);
+    }
+}

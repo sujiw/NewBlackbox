@@ -16,21 +16,21 @@ class FakeLocationViewModel(private val mRepo: FakeLocationRepository) : BaseVie
     val appsLiveData = MutableLiveData<List<FakeLocationBean>>()
 
 
-    fun getInstallAppList(userID: Int) {
+    fun getInstallAppList() {
         launchOnUI {
-            mRepo.getInstalledAppList(userID, appsLiveData)
+            mRepo.getInstalledAppList(appsLiveData)
         }
     }
 
-    fun setPattern(userId: Int, pkg: String, pattern: Int) {
+    fun setPattern(pkg: String, pattern: Int) {
         launchOnUI {
-            mRepo.setPattern(userId, pkg, pattern)
+            mRepo.setPattern(pkg, pattern)
         }
     }
 
-    fun setLocation(userId: Int, pkg: String, location: BLocation) {
+    fun setLocation(pkg: String, location: BLocation) {
         launchOnUI {
-            mRepo.setLocation(userId, pkg, location)
+            mRepo.setLocation(pkg, location)
         }
     }
 

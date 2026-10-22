@@ -10,6 +10,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Automation api -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Needed to install an apk from a path such as /sdcard/Download/app.apk -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
     <application
         android:name=".app.App"
         android:allowBackup="true"
@@ -25,6 +34,16 @@
             android:name=".view.fake.FollowMyLocationOverlay"
             android:exported="false" />
         <activity android:name=".view.setting.SettingActivity" />
+        <activity
+            android:name=".view.config.AppConfigActivity"
+            android:exported="false" />
+        <activity
+            android:name=".view.automation.AutomationActivity"
+            android:exported="false" />
+        <service
+            android:name=".api.ApiService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <activity android:name=".view.gms.GmsManagerActivity" />
         <activity android:name=".view.cert.CertManagerActivity" />
         <activity android:name=".view.cert.VirtualCaptureActivity" />

@@ -113,7 +113,7 @@ class BlackBoxLoader {
                     try {
                         Log.d(
                             TAG,
-                            "beforeCreateApplication: pkg $packageName, processName $processName,userID:${BActivityThread.getUserId()}"
+                            "beforeCreateApplication: pkg $packageName, processName $processName"
                         )
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in beforeCreateApplication: ${e.message}")

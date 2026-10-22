@@ -7,7 +7,7 @@ import top.niunaijun.blackboxa.view.base.BaseViewModel
 
 /**
  *
- * @Description:
+ * @Description: 软件显示界面 viewModel
  * @Author: wukaicheng
  * @CreateDate: 2021/4/29 22:36
  */
@@ -22,39 +22,39 @@ class AppsViewModel(private val repo: AppsRepository) : BaseViewModel() {
     //利用LiveData只更新最后一次的特性，用来保存app顺序
     val updateSortLiveData = MutableLiveData<Boolean>()
 
-    fun getInstalledApps(userId: Int) {
+    fun getInstalledApps() {
         launchOnUI {
-            repo.getVmInstallList(userId, appsLiveData)
+            repo.getVmInstallList(appsLiveData)
         }
     }
 
-    fun install(source: String, userID: Int) {
+    fun install(source: String) {
         launchOnUI {
-            repo.installApk(source, userID, resultLiveData)
+            repo.installApk(source, resultLiveData)
         }
     }
 
-    fun unInstall(packageName: String, userID: Int) {
+    fun unInstall(packageName: String) {
         launchOnUI {
-            repo.unInstall(packageName, userID, resultLiveData)
+            repo.unInstall(packageName, resultLiveData)
         }
     }
 
-    fun clearApkData(packageName: String,userID: Int){
+    fun clearApkData(packageName: String) {
         launchOnUI {
-            repo.clearApkData(packageName,userID,resultLiveData)
+            repo.clearApkData(packageName, resultLiveData)
         }
     }
 
-    fun launchApk(packageName: String, userID: Int) {
+    fun launchApk(packageName: String) {
         launchOnUI {
-            repo.launchApk(packageName, userID, launchLiveData)
+            repo.launchApk(packageName, launchLiveData)
         }
     }
 
-    fun updateApkOrder(userID: Int,dataList:List<AppInfo>){
+    fun updateApkOrder(dataList: List<AppInfo>) {
         launchOnUI {
-            repo.updateApkOrder(userID,dataList)
+            repo.updateApkOrder(dataList)
         }
     }
 }

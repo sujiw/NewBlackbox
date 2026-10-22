@@ -7,38 +7,34 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.edit
-import androidx.viewpager2.widget.ViewPager2
 import com.afollestad.materialdialogs.MaterialDialog
-import com.afollestad.materialdialogs.input.input
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackboxa.R
 import top.niunaijun.blackboxa.app.App
-import top.niunaijun.blackboxa.app.AppManager
 import top.niunaijun.blackboxa.databinding.ActivityMainBinding
+import top.niunaijun.blackboxa.task.TaskEngine
+import top.niunaijun.blackboxa.task.TaskMode
 import top.niunaijun.blackboxa.util.Resolution
 import top.niunaijun.blackboxa.util.inflate
+import top.niunaijun.blackboxa.util.toast
 import top.niunaijun.blackboxa.view.apps.AppsFragment
+import top.niunaijun.blackboxa.view.automation.AutomationActivity
 import top.niunaijun.blackboxa.view.base.LoadingActivity
 import top.niunaijun.blackboxa.view.fake.FakeManagerActivity
 import top.niunaijun.blackboxa.view.list.ListActivity
 import top.niunaijun.blackboxa.view.setting.SettingActivity
+import top.niunaijun.blackboxa.view.task.TaskConsoleFragment
 
 
 class MainActivity : LoadingActivity() {
 
     private val viewBinding: ActivityMainBinding by inflate()
 
-    private lateinit var mViewPagerAdapter: ViewPagerAdapter
-
-    private val fragmentList = mutableListOf<AppsFragment>()
-
-    private var currentUser = 0
-
     companion object {
         private const val TAG = "MainActivity"
-        
+
         fun start(context: Context) {
             val intent = Intent(context, MainActivity::class.java)
             context.startActivity(intent)
@@ -57,9 +53,11 @@ class MainActivity : LoadingActivity() {
 
             setContentView(viewBinding.root)
             initToolbar(viewBinding.toolbarLayout.toolbar, R.string.app_name)
-            initViewPager()
+            TaskMode.init(this)
+            TaskEngine.ensureInit(this)
+            showContent()
+            TaskMode.enabled.observe(this) { showContent() }
             initFab()
-            initToolbarSubTitle()
 
             try {
                 BlackBoxCore.get().onAfterMainActivityOnCreate(this)
@@ -68,99 +66,64 @@ class MainActivity : LoadingActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Critical error in onCreate: ${e.message}")
-            // Show error dialog to user
-            showErrorDialog("Failed to initialize app: ${e.message}")
-        }
-    }
-
-    private fun showErrorDialog(message: String) {
-        try {
-            MaterialDialog(this).show {
-                title(text = "Error")
-                message(text = message)
-                positiveButton(text = "OK") {
-                    finish()
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing error dialog: ${e.message}")
             finish()
         }
     }
 
-    private fun initToolbarSubTitle() {
+    /** Swaps between the app list and the task console depending on the mode. */
+    private fun showContent() {
         try {
-            updateUserRemark(0)
-            //hack code
-            viewBinding.toolbarLayout.toolbar.getChildAt(1)?.setOnClickListener {
-                try {
-                    MaterialDialog(this).show {
-                        title(res = R.string.userRemark)
-                        input(
-                            hintRes = R.string.userRemark,
-                            prefill = viewBinding.toolbarLayout.toolbar.subtitle
-                        ) { _, input ->
-                            try {
-                                AppManager.mRemarkSharedPreferences.edit {
-                                    putString("Remark$currentUser", input.toString())
-                                    viewBinding.toolbarLayout.toolbar.subtitle = input
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error saving user remark: ${e.message}")
-                            }
-                        }
-                        positiveButton(res = R.string.done)
-                        negativeButton(res = R.string.cancel)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error showing remark dialog: ${e.message}")
-                }
+            val taskMode = TaskMode.isEnabled(this)
+            viewBinding.fab.visibility = if (taskMode) View.GONE else View.VISIBLE
+
+            val existing = supportFragmentManager.findFragmentById(R.id.fragment_container)
+            val target = if (taskMode) TaskConsoleFragment::class.java else AppsFragment::class.java
+            if (existing != null && target.isInstance(existing)) {
+                return
             }
+            val fragment = if (taskMode) TaskConsoleFragment() else AppsFragment()
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, fragment)
+                .commit()
         } catch (e: Exception) {
-            Log.e(TAG, "Error in initToolbarSubTitle: ${e.message}")
+            Log.e(TAG, "Error showing content: ${e.message}")
         }
     }
 
-    private fun initViewPager() {
+    private fun toggleTaskMode() {
         try {
-            val userList = BlackBoxCore.get().users
-            userList.forEach {
-                fragmentList.add(AppsFragment.newInstance(it.id))
+            if (!TaskMode.isEnabled(this)) {
+                TaskMode.setEnabled(this, true)
+                toast(R.string.task_mode_on)
+                return
             }
-
-            currentUser = userList.firstOrNull()?.id ?: 0
-            fragmentList.add(AppsFragment.newInstance(userList.size))
-
-            mViewPagerAdapter = ViewPagerAdapter(this)
-            mViewPagerAdapter.replaceData(fragmentList)
-            viewBinding.viewPager.adapter = mViewPagerAdapter
-            viewBinding.dotsIndicator.setViewPager2(viewBinding.viewPager)
-            viewBinding.viewPager.registerOnPageChangeCallback(object :
-                ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) {
-                    try {
-                        super.onPageSelected(position)
-                        currentUser = fragmentList[position].userID
-                        updateUserRemark(currentUser)
-                        showFloatButton(true)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error in onPageSelected: ${e.message}")
-                    }
-                }
-            })
+            val counts = TaskEngine.counts()
+            val pending = counts.queued + counts.running
+            if (pending <= 0) {
+                disableTaskMode()
+                return
+            }
+            MaterialDialog(this).show {
+                title(R.string.task_exit_title)
+                message(text = getString(R.string.task_exit_message, pending))
+                positiveButton(R.string.task_exit_ok) { disableTaskMode() }
+                negativeButton(R.string.cancel)
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error in initViewPager: ${e.message}")
+            Log.e(TAG, "Error toggling task mode: ${e.message}")
         }
+    }
+
+    private fun disableTaskMode() {
+        TaskMode.setEnabled(this, false)
+        toast(R.string.task_mode_off)
     }
 
     private fun initFab() {
         try {
             viewBinding.fab.setOnClickListener {
                 try {
-                    val userId = viewBinding.viewPager.currentItem
-                    val intent = Intent(this, ListActivity::class.java)
-                    intent.putExtra("userID", userId)
-                    apkPathResult.launch(intent)
+                    apkPathResult.launch(Intent(this, ListActivity::class.java))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error launching ListActivity: ${e.message}")
                 }
@@ -186,46 +149,15 @@ class MainActivity : LoadingActivity() {
         }
     }
 
-    fun scanUser() {
-        try {
-            val userList = BlackBoxCore.get().users
-
-            if (fragmentList.size == userList.size) {
-                fragmentList.add(AppsFragment.newInstance(fragmentList.size))
-            } else if (fragmentList.size > userList.size + 1) {
-                fragmentList.removeLast()
-            }
-
-            mViewPagerAdapter.notifyDataSetChanged()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in scanUser: ${e.message}")
-        }
-    }
-
-    private fun updateUserRemark(userId: Int) {
-        try {
-            var remark = AppManager.mRemarkSharedPreferences.getString("Remark$userId", "User $userId")
-            if (remark.isNullOrEmpty()) {
-                remark = "User $userId"
-            }
-
-            viewBinding.toolbarLayout.toolbar.subtitle = remark
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating user remark: ${e.message}")
-            viewBinding.toolbarLayout.toolbar.subtitle = "User $userId"
-        }
-    }
-
     private val apkPathResult =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             try {
                 if (it.resultCode == RESULT_OK) {
-                    it.data?.let { data ->
-                        val userId = data.getIntExtra("userID", 0)
-                        val source = data.getStringExtra("source")
-                        if (source != null) {
-                            fragmentList[userId].installApk(source)
-                        }
+                    val source = it.data?.getStringExtra("source")
+                    if (source != null) {
+                        val fragment =
+                            supportFragmentManager.findFragmentById(R.id.fragment_container) as? AppsFragment
+                        fragment?.installApk(source)
                     }
                 }
             } catch (e: Exception) {
@@ -263,10 +195,15 @@ class MainActivity : LoadingActivity() {
                 }
 
                 R.id.fake_location -> {
-                    // toast("Still Developing")
-                    val intent = Intent(this, FakeManagerActivity::class.java)
-                    intent.putExtra("userID", 0)
-                    startActivity(intent)
+                    startActivity(Intent(this, FakeManagerActivity::class.java))
+                }
+
+                R.id.main_task_mode -> {
+                    toggleTaskMode()
+                }
+
+                R.id.main_automation -> {
+                    AutomationActivity.start(this)
                 }
             }
 
