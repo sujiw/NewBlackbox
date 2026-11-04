@@ -21,6 +21,8 @@ public class AppConfig implements Parcelable {
     public String gaidConfig;
     /** Raw json of the per-app device fingerprint, null when not overridden. */
     public String deviceConfig;
+    /** Raw json of the per-app Play install referrer, null when not overridden. */
+    public String referrerConfig;
     public static final Parcelable.Creator<AppConfig> CREATOR = new Parcelable.Creator<AppConfig>() { // from class: top.niunaijun.blackbox.entity.AppConfig.1
         /* JADX WARN: Can't rename method to resolve collision */
         @Override // android.os.Parcelable.Creator
@@ -53,6 +55,7 @@ public class AppConfig implements Parcelable {
         dest.writeString(this.proxyConfig);
         dest.writeString(this.gaidConfig);
         dest.writeString(this.deviceConfig);
+        dest.writeString(this.referrerConfig);
     }
 
     public AppConfig() {
@@ -70,5 +73,6 @@ public class AppConfig implements Parcelable {
         this.proxyConfig = in.readString();
         this.gaidConfig = in.readString();
         this.deviceConfig = in.readString();
+        this.referrerConfig = in.readString();
     }
 }

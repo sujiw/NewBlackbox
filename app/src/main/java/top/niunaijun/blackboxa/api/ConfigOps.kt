@@ -7,6 +7,8 @@ import top.niunaijun.blackboxa.bean.AppGaidConfig
 import top.niunaijun.blackboxa.bean.AppGaidStore
 import top.niunaijun.blackboxa.bean.AppProxyConfig
 import top.niunaijun.blackboxa.bean.AppProxyStore
+import top.niunaijun.blackboxa.bean.AppReferrerConfig
+import top.niunaijun.blackboxa.bean.AppReferrerStore
 
 /**
  * Shared writer/reader for the per-app overrides, used by both the REST api and
@@ -18,11 +20,13 @@ object ConfigOps {
         val proxy = AppProxyStore.load(context, packageName)
         val gaid = AppGaidStore.load(context, packageName)
         val device = AppDeviceStore.load(context, packageName)
+        val referrer = AppReferrerStore.load(context, packageName)
         return JSONObject()
             .put("package", packageName)
             .put("proxy", proxy?.let { JSONObject(it.toJson()) } ?: JSONObject.NULL)
             .put("gaid", gaid?.let { JSONObject(it.toJson()) } ?: JSONObject.NULL)
             .put("device", device?.let { JSONObject(it.toJson()) } ?: JSONObject.NULL)
+            .put("referrer", referrer?.let { JSONObject(it.toJson()) } ?: JSONObject.NULL)
     }
 
     /**
@@ -76,12 +80,55 @@ object ConfigOps {
                 AppDeviceStore.saveRaw(context, packageName, device.toString())
             }
         }
+        if (body.has("referrer")) {
+            applyReferrer(context, packageName, body.opt("referrer"))
+        }
         return read(context, packageName)
+    }
+
+    /** referrer 支持裸串、商店链接、或 {referrer, clickTimestamp, installTimestamp}。 */
+    private fun applyReferrer(context: Context, packageName: String, value: Any?) {
+        if (value == null || value == JSONObject.NULL) {
+            AppReferrerStore.remove(context, packageName)
+            return
+        }
+        val now = System.currentTimeMillis() / 1000L
+        if (value is JSONObject) {
+            val referrer = AppReferrerConfig.normalize(value.optString("referrer", ""))
+            if (referrer.isEmpty()) {
+                AppReferrerStore.remove(context, packageName)
+                return
+            }
+            AppReferrerStore.save(
+                context, packageName,
+                AppReferrerConfig(
+                    referrer = referrer,
+                    clickTimestamp = value.optLong("clickTimestamp", now),
+                    installTimestamp = value.optLong("installTimestamp", now),
+                    installVersion = value.optString("installVersion", "")
+                )
+            )
+            return
+        }
+        val referrer = AppReferrerConfig.normalize(value.toString())
+        if (referrer.isEmpty()) {
+            AppReferrerStore.remove(context, packageName)
+        } else {
+            AppReferrerStore.save(
+                context, packageName,
+                AppReferrerConfig(
+                    referrer = referrer,
+                    clickTimestamp = now,
+                    installTimestamp = now
+                )
+            )
+        }
     }
 
     fun clear(context: Context, packageName: String) {
         AppProxyStore.remove(context, packageName)
         AppGaidStore.remove(context, packageName)
         AppDeviceStore.remove(context, packageName)
+        AppReferrerStore.remove(context, packageName)
     }
 }

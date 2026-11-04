@@ -14,6 +14,7 @@ import top.niunaijun.blackbox.proxy.ProxyManifest;
 import top.niunaijun.blackbox.utils.AppProxyManager;
 import top.niunaijun.blackbox.utils.DeviceInfoManager;
 import top.niunaijun.blackbox.utils.GaidManager;
+import top.niunaijun.blackbox.utils.ReferrerManager;
 
 /* JADX INFO: loaded from: classes.jar:top/niunaijun/blackbox/core/system/ProcessRecord.class */
 public class ProcessRecord extends Binder {
@@ -63,6 +64,8 @@ public class ProcessRecord extends Binder {
         config.gaidConfig = GaidManager.readStoredConfig(
                 hostFilesDir, this.info.packageName);
         config.deviceConfig = DeviceInfoManager.readStoredConfig(
+                hostFilesDir, this.info.packageName);
+        config.referrerConfig = ReferrerManager.readStoredConfig(
                 hostFilesDir, this.info.packageName);
         return config;
     }

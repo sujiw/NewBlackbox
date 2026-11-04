@@ -74,6 +74,7 @@ import top.niunaijun.blackbox.fake.service.HCallbackProxy;
 import top.niunaijun.blackbox.utils.AppProxyManager;
 import top.niunaijun.blackbox.utils.DeviceInfoManager;
 import top.niunaijun.blackbox.utils.GaidManager;
+import top.niunaijun.blackbox.utils.ReferrerManager;
 import top.niunaijun.blackbox.utils.Reflector;
 import top.niunaijun.blackbox.utils.Slog;
 import top.niunaijun.blackbox.utils.compat.ActivityManagerCompat;
@@ -451,6 +452,7 @@ public class BActivityThread extends IBActivityThread.Stub {
             AppProxyManager.installFromJson(getAppConfig() != null ? getAppConfig().proxyConfig : null);
             GaidManager.setConfig(getAppConfig() != null ? getAppConfig().gaidConfig : null);
             DeviceInfoManager.setConfig(getAppConfig() != null ? getAppConfig().deviceConfig : null);
+            ReferrerManager.setConfig(getAppConfig() != null ? getAppConfig().referrerConfig : null);
             DeviceInfoManager.applyToMetrics(application.getResources());
             if (systemContext != null) {
                 DeviceInfoManager.applyToMetrics(systemContext.getResources());

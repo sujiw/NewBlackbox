@@ -43,6 +43,7 @@ import top.niunaijun.blackbox.proxy.ProxyManifest;
 import top.niunaijun.blackbox.proxy.record.ProxyBroadcastRecord;
 import top.niunaijun.blackbox.proxy.record.ProxyPendingRecord;
 import top.niunaijun.blackbox.utils.GaidManager;
+import top.niunaijun.blackbox.utils.ReferrerManager;
 import top.niunaijun.blackbox.utils.MethodParameterUtils;
 import top.niunaijun.blackbox.utils.Reflector;
 import top.niunaijun.blackbox.utils.DeviceInfoManager;
@@ -319,6 +320,12 @@ public class IActivityManagerProxy extends ClassInvocationStub {
                 Slog.d(TAG, "BindServiceCommon: advertising id bind requested, configured="
                         + GaidManager.isConfigured());
             }
+            if (ReferrerManager.isConfigured() && ReferrerManager.isInstallReferrerIntent(intent)
+                    && ReferrerManager.deliverFakeConnection(connection, intent)) {
+                Slog.d(TAG, "BindServiceCommon: injected install referrer for " + intent.getAction());
+                return method.getReturnType() == boolean.class
+                        ? Boolean.TRUE : (Object) Integer.valueOf(1);
+            }
             if (GaidManager.isConfigured() && GaidManager.isAdvertisingIdIntent(intent)
                     && GaidManager.deliverFakeConnection(connection, intent)) {
                 Slog.d(TAG, "BindServiceCommon: injected advertising id for " + intent.getAction());
@@ -421,6 +428,10 @@ public class IActivityManagerProxy extends ClassInvocationStub {
             IServiceConnection iServiceConnection = (IServiceConnection) args[0];
             if (iServiceConnection == null) {
                 return method.invoke(who, args);
+            }
+            if (ReferrerManager.consumeInjected(iServiceConnection)) {
+                Slog.d(TAG, "UnbindService: skipping fake install referrer unbind");
+                return Boolean.TRUE;
             }
             if (GaidManager.consumeInjected(iServiceConnection)) {
                 // The matching bindService() was answered with a fake advertising

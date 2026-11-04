@@ -33,7 +33,7 @@ import java.util.concurrent.Executors
  * GET  /v1/docs            (API 文档页，无需 token；/、/docs 等价)
  * GET  /v1/openapi.json    (OpenAPI 3.0 描述，无需 token；/openapi.json 等价)
  * GET  /v1/apps
- * POST /v1/apps/install   {"url"|"path"|"package", "config":{...}}   (config optional, same shape as below)
+ * POST /v1/apps/install   {"url"|"path"|"package", "config":{...}, "referrer":"adjust_reftag=..."|商店链接}
  * POST /v1/apps/launch    {"package"}
  * POST /v1/apps/stop      {"package"}   (package optional, omit to stop every running app)
  * POST /v1/apps/uninstall {"package"}   (also clears proxy/gaid/device stored for the package)
@@ -433,14 +433,24 @@ object ApiServer {
         if (url.isEmpty() && path.isEmpty() && packageName.isEmpty()) {
             return ApiResult(400, error("one of url, path or package is required"))
         }
+        // config 里可以带 referrer 对象，body 顶层的 referrer 支持裸串或商店链接
+        val config = body.optJSONObject("config")?.let { JSONObject(it.toString()) } ?: JSONObject()
+        var referrer: String? = null
+        when (val raw = body.opt("referrer")) {
+            null, JSONObject.NULL -> Unit
+            is JSONObject -> config.put("referrer", raw)
+            else -> referrer = raw.toString()
+        }
+        val installConfig = if (config.length() > 0) config else null
         val outcome = try {
             InstallOps.install(
                 context = context,
                 url = url,
                 path = path,
                 packageName = packageName,
-                config = body.optJSONObject("config"),
+                config = installConfig,
                 reinstall = body.optBoolean("reinstall", true),
+                referrer = referrer,
                 userId = USER_ID
             )
         } catch (e: Throwable) {
@@ -451,6 +461,7 @@ object ApiServer {
             .put("package", outcome.packageName)
             .put("message", outcome.message)
             .put("reinstalled", outcome.reinstalled)
+            .put("referrer", outcome.referrer ?: JSONObject.NULL)
         if (outcome.config != null) {
             response.put("config", outcome.config)
         }

@@ -491,6 +491,7 @@ object TaskEngine {
                 packageName = step.params.optString("package", ""),
                 config = step.params.optJSONObject("config"),
                 reinstall = step.params.optBoolean("reinstall", true),
+                referrer = step.params.optString("referrer", "").ifBlank { null },
                 userId = USER_ID
             )
             if (outcome.success) null else outcome.message.ifEmpty { "install failed" }

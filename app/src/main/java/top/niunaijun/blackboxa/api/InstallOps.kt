@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackboxa.bean.AppReferrerConfig
+import top.niunaijun.blackboxa.bean.AppReferrerStore
 import java.io.File
 
 /**
@@ -21,6 +23,7 @@ object InstallOps {
         val packageName: String,
         val message: String,
         val reinstalled: Boolean,
+        val referrer: String?,
         val config: JSONObject?
     )
 
@@ -38,6 +41,7 @@ object InstallOps {
         packageName: String,
         config: JSONObject?,
         reinstall: Boolean,
+        referrer: String?,
         userId: Int
     ): Outcome {
         val file: File? = when {
@@ -71,6 +75,26 @@ object InstallOps {
 
         val installed = result.packageName?.takeIf { it.isNotEmpty() }
             ?: target.ifEmpty { packageName }
+        var savedReferrer: String? = null
+        if (result.success && installed.isNotEmpty() && !referrer.isNullOrBlank()) {
+            try {
+                val normalized = AppReferrerConfig.normalize(referrer)
+                if (normalized.isNotEmpty()) {
+                    val now = System.currentTimeMillis() / 1000L
+                    AppReferrerStore.save(
+                        context, installed,
+                        AppReferrerConfig(
+                            referrer = normalized,
+                            clickTimestamp = now,
+                            installTimestamp = now
+                        )
+                    )
+                    savedReferrer = normalized
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "save referrer failed: ${e.message}")
+            }
+        }
         var applied: JSONObject? = null
         if (result.success && installed.isNotEmpty() && config != null) {
             try {
@@ -84,6 +108,7 @@ object InstallOps {
             packageName = installed,
             message = result.msg ?: "",
             reinstalled = reinstalled,
+            referrer = savedReferrer,
             config = applied
         )
     }

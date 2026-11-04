@@ -674,6 +674,13 @@ object ApiOpenApi {
             "default": true,
             "description": "目标包已存在时是否先卸载再安装"
           },
+          "referrer": {
+            "description": "Play 安装来源：裸串（adjust_reftag=...）、商店链接（自动取 referrer 参数）或 ReferrerConfig 对象",
+            "oneOf": [
+              { "type": "string" },
+              { "${'$'}ref": "#/components/schemas/ReferrerConfig" }
+            ]
+          },
           "config": { "${'$'}ref": "#/components/schemas/ConfigUpdate" }
         }
       },
@@ -684,6 +691,7 @@ object ApiOpenApi {
           "package": { "type": "string" },
           "message": { "type": "string" },
           "reinstalled": { "type": "boolean", "description": "本次是否执行了先卸载旧版本" },
+          "referrer": { "type": "string", "nullable": true, "description": "本次写入的 install referrer" },
           "config": { "${'$'}ref": "#/components/schemas/ConfigResponse" }
         }
       },
@@ -793,7 +801,14 @@ object ApiOpenApi {
         "properties": {
           "proxy": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/ProxyConfig" }] },
           "gaid": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/GaidConfig" }] },
-          "device": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/DeviceProfile" }] }
+          "device": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/DeviceProfile" }] },
+          "referrer": {
+            "nullable": true,
+            "oneOf": [
+              { "type": "string" },
+              { "${'$'}ref": "#/components/schemas/ReferrerConfig" }
+            ]
+          }
         }
       },
       "ConfigResponse": {
@@ -802,7 +817,18 @@ object ApiOpenApi {
           "package": { "type": "string" },
           "proxy": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/ProxyConfig" }] },
           "gaid": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/GaidConfig" }] },
-          "device": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/DeviceProfile" }] }
+          "device": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/DeviceProfile" }] },
+          "referrer": { "nullable": true, "allOf": [{ "${'$'}ref": "#/components/schemas/ReferrerConfig" }] }
+        }
+      },
+      "ReferrerConfig": {
+        "type": "object",
+        "required": ["referrer"],
+        "properties": {
+          "referrer": { "type": "string", "example": "adjust_reftag=cwKyD4chsBr9n" },
+          "clickTimestamp": { "type": "integer", "format": "int64", "description": "点击时间（秒）" },
+          "installTimestamp": { "type": "integer", "format": "int64", "description": "开始安装时间（秒）" },
+          "installVersion": { "type": "string", "description": "安装时商店版本，可选" }
         }
       },
       "JobState": {
@@ -819,7 +845,8 @@ object ApiOpenApi {
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["install", "config", "launch", "stop", "uninstall", "clear", "wait"]
+            "enum": ["install", "config", "launch", "stop", "uninstall", "clear", "wait"],
+            "description": "install 步骤额外支持 referrer 参数"
           },
           "package": { "type": "string", "description": "config/launch/stop/uninstall 必填" },
           "url": { "type": "string", "description": "install 三选一" },

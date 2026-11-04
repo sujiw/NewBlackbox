@@ -137,6 +137,10 @@ object ApiDocs {
                 Param("path", "string", "三选一", "容器可见的本地路径，如 <code>/sdcard/a.apk</code>"),
                 Param("package", "string", "三选一", "设备上已安装的同包名应用，直接复制进容器"),
                 Param("reinstall", "bool", "否", "默认 <code>true</code>：目标已存在时先卸载再安装；false 则直接覆盖安装"),
+                Param("referrer", "string|object", "否",
+                    "Play 安装来源。可直接给裸串 <code>adjust_reftag=cwKyD4chsBr9n</code>，" +
+                            "也可给商店链接（自动取出并解码 <code>referrer</code> 参数）；" +
+                            "对象形式见「数据模型 · Referrer」"),
                 Param("config", "object", "否", "安装成功后写入的配置，结构同 <code>/v1/apps/{pkg}/config</code>")
             ) + pre(
                 "请求",
@@ -157,7 +161,9 @@ object ApiDocs {
                   "package": "com.example.app",
                   "message": "",
                   "reinstalled": true,
-                  "config": { "package": "com.example.app", "proxy": {...}, "gaid": null, "device": {...} }
+                  "referrer": "adjust_reftag=cwKyD4chsBr9n",
+                  "config": { "package": "com.example.app", "proxy": {...}, "gaid": null,
+                              "device": {...}, "referrer": {...} }
                 }
                 """.trimIndent()
             )
@@ -232,7 +238,8 @@ object ApiDocs {
             params(
                 Param("proxy", "object|null", "否", "代理配置，结构见「数据模型 · Proxy」"),
                 Param("gaid", "object|null", "否", "广告 ID，结构见「数据模型 · GAID」"),
-                Param("device", "object|null", "否", "设备档案，字段见「数据模型 · Device」")
+                Param("device", "object|null", "否", "设备档案，字段见「数据模型 · Device」"),
+                Param("referrer", "object|string|null", "否", "Play 安装来源，传 null 清除")
             ) + pre(
                 "请求（只改设备档案，代理保持不动）",
                 """
@@ -415,6 +422,18 @@ object ApiDocs {
             Param("gaid", "string", "是", "UUID 形式的广告 ID"),
             Param("limitAdTracking", "bool", "否", "默认 <code>false</code>；为 true 时上报限制广告跟踪")
         )}
+
+        <h3 id="model-referrer">Referrer</h3>
+        ${params(
+            Param("referrer", "string", "是", "原始 referrer，如 <code>adjust_reftag=cwKyD4chsBr9n</code>"),
+            Param("clickTimestamp", "long", "否", "点击时间（秒），默认当前时间"),
+            Param("installTimestamp", "long", "否", "开始安装时间（秒），默认当前时间"),
+            Param("installVersion", "string", "否", "安装时商店版本，可选")
+        )}
+        <p>会通过 <code>com.android.vending</code> 的
+        <code>IGetInstallReferrerService</code> 下发给 <code>InstallReferrerClient</code>，
+        字段名与 Play 官方返回一致（<code>install_referrer</code> /
+        <code>referrer_click_timestamp_seconds</code> / <code>install_begin_timestamp_seconds</code>）。</p>
 
         <h3 id="model-device">Device</h3>
         <p>整份档案原样保存：容器认识的键会真正落到系统 API，不认识的键也会保留（供上报使用）。

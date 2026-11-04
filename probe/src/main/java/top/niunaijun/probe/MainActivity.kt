@@ -50,6 +50,11 @@ class MainActivity : Activity() {
     private var gaidLimit: String? = null
     private var gaidState: String? = null
 
+    /** Play 安装来源同样是异步 bind 取。 */
+    private var referrerValue: String? = null
+    private var referrerExtra: String? = null
+    private var referrerState: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -84,6 +89,7 @@ class MainActivity : Activity() {
         }
         content.text = collect()
         fetchGaidAsync()
+        fetchReferrerAsync()
     }
 
     private fun collect(): String {
@@ -277,6 +283,12 @@ class MainActivity : Activity() {
             }
         }
 
+        section("Install Referrer") {
+            line("state", referrerState ?: "(not requested)")
+            line("install_referrer", referrerValue ?: "(null)")
+            line("timestamps", referrerExtra ?: "(null)")
+        }
+
         section("GAID") {
             line("state", gaidState ?: "(not requested)")
             line("advertising_id", gaidId ?: "(null)")
@@ -437,6 +449,90 @@ class MainActivity : Activity() {
                 gaidState = "ok"
             } catch (t: Throwable) {
                 gaidState = "error: " + t.javaClass.simpleName + ": " + t.message
+            } finally {
+                try {
+                    unbindService(connection)
+                } catch (ignored: Throwable) {
+                }
+                render()
+            }
+        }.start()
+    }
+
+    /**
+     * 绑定 com.android.vending 的 IGetInstallReferrerService，
+     * transact(1) 传 {package_name}，返回 Bundle{install_referrer, *_timestamp_seconds}。
+     */
+    private fun fetchReferrerAsync() {
+        referrerState = "binding..."
+        val intent = Intent("com.google.android.finsky.BIND_GET_INSTALL_REFERRER_SERVICE")
+            .setPackage("com.android.vending")
+        val latch = CountDownLatch(1)
+        var binder: IBinder? = null
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                binder = service
+                latch.countDown()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                referrerState = "disconnected"
+            }
+        }
+        val bound = try {
+            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        } catch (t: Throwable) {
+            referrerState = "bind failed: " + t.javaClass.simpleName
+            false
+        }
+        if (!bound) {
+            if (referrerState == "binding...") referrerState = "bindService returned false"
+            render()
+            return
+        }
+        Thread {
+            try {
+                if (!latch.await(5, TimeUnit.SECONDS)) {
+                    referrerState = "timeout waiting for service"
+                    return@Thread
+                }
+                val service = binder
+                if (service == null) {
+                    referrerState = "null binder"
+                    return@Thread
+                }
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(
+                        "com.google.android.finsky.externalreferrer.IGetInstallReferrerService"
+                    )
+                    val params = Bundle().apply { putString("package_name", packageName) }
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        data.writeTypedObject(params, 0)
+                    } else {
+                        data.writeParcelable(params, 0)
+                    }
+                    service.transact(1, data, reply, 0)
+                    reply.readException()
+                    @Suppress("DEPRECATION")
+                    val result = if (Build.VERSION.SDK_INT >= 33) {
+                        reply.readTypedObject(Bundle.CREATOR)
+                    } else {
+                        reply.readParcelable(Bundle::class.java.classLoader)
+                    }
+                    referrerValue = result?.getString("install_referrer") ?: "(empty)"
+                    referrerExtra = "click=" +
+                        result?.getLong("referrer_click_timestamp_seconds", 0L) +
+                        ", install=" +
+                        result?.getLong("install_begin_timestamp_seconds", 0L)
+                    referrerState = "ok"
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            } catch (t: Throwable) {
+                referrerState = "error: " + t.javaClass.simpleName + ": " + t.message
             } finally {
                 try {
                     unbindService(connection)
