@@ -74,6 +74,15 @@ import top.niunaijun.blackbox.utils.provider.ProviderCall;
 @SuppressLint({"StaticFieldLeak", "NewApi"})
 public class BlackBoxCore extends ClientConfiguration {
     public static final String TAG = "BlackBoxCore";
+
+    /**
+     * 虚拟应用的启动来源（open_referrer）。
+     *
+     * <p>三方 SDK 的 open_referrer 来自 {@code Activity.getReferrer()}，而该方法在
+     * API 22+ 会优先读启动 Intent 里的 {@link Intent#EXTRA_REFERRER}。容器启动 guest
+     * 应用时补上这个 extra，SDK 读到的就是 Google Play 的来源。</p>
+     */
+    public static final String DEFAULT_OPEN_REFERRER = "android-app://com.android.vending";
     private static final BlackBoxCore sBlackBoxCore = new BlackBoxCore();
     private static Context sContext;
     private ProcessType mProcessType;
@@ -373,8 +382,33 @@ public class BlackBoxCore extends ClientConfiguration {
         if (launchIntentForPackage == null) {
             return false;
         }
+        applyOpenReferrer(launchIntentForPackage);
         startActivity(launchIntentForPackage, userId);
         return true;
+    }
+
+    /**
+     * 给启动 Intent 补上 open_referrer，已显式指定时保留调用方的值。
+     *
+     * <p>{@code Activity.getReferrer()} 的优先级是
+     * {@code EXTRA_REFERRER} (Uri) → {@code EXTRA_REFERRER_NAME} (String) → 系统 referrer，
+     * 所以两个都写，覆盖只读其一的 SDK。</p>
+     */
+    public static void applyOpenReferrer(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        try {
+            if (intent.getParcelableExtra(Intent.EXTRA_REFERRER) == null) {
+                intent.putExtra(Intent.EXTRA_REFERRER, Uri.parse(DEFAULT_OPEN_REFERRER));
+            }
+            if (intent.getStringExtra(Intent.EXTRA_REFERRER_NAME) == null) {
+                intent.putExtra(Intent.EXTRA_REFERRER_NAME, DEFAULT_OPEN_REFERRER);
+            }
+            Slog.d(TAG, "open referrer -> " + intent.getParcelableExtra(Intent.EXTRA_REFERRER));
+        } catch (Throwable t) {
+            Slog.w(TAG, "apply open referrer failed: " + t.getMessage());
+        }
     }
 
     public boolean isInstalled(String packageName, int userId) {

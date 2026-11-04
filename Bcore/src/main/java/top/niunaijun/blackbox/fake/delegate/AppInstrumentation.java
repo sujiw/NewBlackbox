@@ -114,6 +114,15 @@ public final class AppInstrumentation extends BaseInstrumentationDelegate implem
         ContextCompat.fix(activity);
         ActivityCompat.fix(activity);
         DeviceInfoManager.applyToMetrics(activity.getResources());
+        // open_referrer 自检：Activity.getReferrer() 优先读启动 Intent 的这个 extra
+        try {
+            android.content.Intent intent = activity.getIntent();
+            Log.d(TAG, "activity referrer: getReferrer()=" + activity.getReferrer()
+                    + ", extra="
+                    + (intent != null ? intent.getParcelableExtra(android.content.Intent.EXTRA_REFERRER) : null));
+        } catch (Throwable t) {
+            Log.w(TAG, "read referrer extra failed: " + t.getMessage());
+        }
         if (info.theme != 0) {
             activity.getTheme().applyStyle(info.theme, true);
         }
