@@ -179,6 +179,25 @@ object ApiDocs {
             params(Param("package", "string", "是", "目标包名")) +
                     pre("响应", "{\"success\":true,\"package\":\"com.example.app\"}")
         )}
+
+        ${endpoint(
+            "POST", "/v1/apps/{pkg}/clear",
+            "清空该应用的数据目录（内部 data / data_de / 外部存储 Android/data），效果等同系统 pm clear，" +
+                    "也可以当成「重装」——应用下次启动就是全新状态。会先停进程再删除，路径别名 <code>/clear-data</code>。",
+            params(Param("config", "bool", "否", "默认 <code>true</code>：同时清除保存的 proxy / gaid / device")) +
+                    pre("请求", "{\"config\": true}") +
+                    pre(
+                        "响应",
+                        """
+                        {
+                          "success": true,
+                          "package": "com.example.app",
+                          "removed": ["/data/user/0/<host>/virtual/data/user/0/com.example.app"],
+                          "configCleared": true
+                        }
+                        """.trimIndent()
+                    )
+        )}
     """.trimIndent()
     )
 
@@ -469,6 +488,7 @@ object ApiDocs {
             Param("launch", "-", "-", "<code>package</code> 必填"),
             Param("stop", "-", "-", "<code>package</code> 必填；省略则停全部（建议显式给）"),
             Param("uninstall", "-", "-", "<code>package</code> 必填；同时清理该应用的配置"),
+            Param("clear", "-", "-", "<code>package</code> 必填；清空数据目录，可选 <code>config</code>（默认 true）"),
             Param("wait", "-", "-", "<code>seconds</code> 必填，0~3600；可被 <code>POST /v1/tasks/{id}/cancel</code> 打断")
         )}
 

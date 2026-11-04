@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import org.json.JSONObject
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackbox.core.env.BEnvironment
+import top.niunaijun.blackbox.utils.FileUtils
 import top.niunaijun.blackboxa.api.ConfigOps
 import top.niunaijun.blackboxa.api.Downloader
 import java.io.File
@@ -37,7 +39,7 @@ object TaskEngine {
     private const val MAX_LOGS = 200
     private const val DEFAULT_TIMEOUT = 120
 
-    private val knownTypes = setOf("install", "config", "launch", "stop", "uninstall", "wait")
+    private val knownTypes = setOf("install", "config", "launch", "stop", "uninstall", "clear", "wait")
 
     private val lock = Any()
     private val jobs = mutableListOf<TaskJob>()
@@ -164,7 +166,7 @@ object TaskEngine {
                 return "step ${index + 1}: unknown type ${step.type}"
             }
             val needsPackage = type == "config" || type == "launch" || type == "stop" ||
-                    type == "uninstall"
+                    type == "uninstall" || type == "clear"
             if (needsPackage && step.params.optString("package", "").isEmpty()) {
                 return "step ${index + 1} ($type): package is required"
             }
@@ -473,6 +475,7 @@ object TaskEngine {
             "launch" -> doLaunch(step)
             "stop" -> doStop(step)
             "uninstall" -> doUninstall(ctx, step)
+            "clear" -> doClear(ctx, step)
             "wait" -> doWait(step)
             else -> "unknown step type: ${step.type}"
         }
@@ -563,6 +566,33 @@ object TaskEngine {
         } catch (e: Throwable) {
             e.message ?: "uninstall failed"
         }
+    }
+
+    /** 清空应用数据目录，效果等同 pm clear / 重装（config 默认一并清除）。 */
+    private fun doClear(ctx: Context, step: TaskStep): String? {
+        val packageName = step.packageName()
+        try {
+            BlackBoxCore.get().stopPackage(packageName, USER_ID)
+        } catch (e: Throwable) {
+            Log.w(TAG, "stop before clear failed: ${e.message}")
+        }
+        var failed = false
+        listOf(
+            BEnvironment.getDataDir(packageName, USER_ID),
+            BEnvironment.getDeDataDir(packageName, USER_ID),
+            BEnvironment.getExternalDataDir(packageName, USER_ID)
+        ).forEach { dir ->
+            if (dir.exists()) {
+                FileUtils.deleteDir(dir)
+                if (dir.exists()) {
+                    failed = true
+                }
+            }
+        }
+        if (step.params.optBoolean("config", true)) {
+            ConfigOps.clear(ctx, packageName)
+        }
+        return if (failed) "failed to remove data dir" else null
     }
 
     private fun doWait(step: TaskStep): String? {

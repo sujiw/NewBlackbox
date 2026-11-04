@@ -223,6 +223,42 @@ object ApiOpenApi {
         }
       }
     },
+    "/v1/apps/{pkg}/clear": {
+      "post": {
+        "tags": ["Apps"],
+        "summary": "清空应用数据（等同重装）",
+        "description": "先停止应用，再删除 data / data_de / 外部存储 Android/data 目录；config=true（默认）时同时清除 proxy / gaid / device。",
+        "parameters": [
+          {
+            "name": "pkg",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "目标应用包名"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "${'$'}ref": "#/components/schemas/ClearRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "被删除的目录列表",
+            "content": {
+              "application/json": {
+                "schema": { "${'$'}ref": "#/components/schemas/ClearResponse" }
+              }
+            }
+          },
+          "401": { "${'$'}ref": "#/components/responses/Unauthorized" },
+          "405": { "${'$'}ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
     "/v1/apps/{pkg}/config": {
       "parameters": [
         {
@@ -722,6 +758,29 @@ object ApiOpenApi {
           "userAgentDalvik": { "type": "string" }
         }
       },
+      "ClearRequest": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "boolean",
+            "default": true,
+            "description": "是否同时清除该应用保存的 proxy / gaid / device"
+          }
+        }
+      },
+      "ClearResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "package": { "type": "string" },
+          "removed": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "实际删除成功的目录绝对路径"
+          },
+          "configCleared": { "type": "boolean" }
+        }
+      },
       "ConfigUpdate": {
         "type": "object",
         "description": "只处理出现的块；显式 null 表示清除该块。",
@@ -754,7 +813,7 @@ object ApiOpenApi {
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["install", "config", "launch", "stop", "uninstall", "wait"]
+            "enum": ["install", "config", "launch", "stop", "uninstall", "clear", "wait"]
           },
           "package": { "type": "string", "description": "config/launch/stop/uninstall 必填" },
           "url": { "type": "string", "description": "install 三选一" },

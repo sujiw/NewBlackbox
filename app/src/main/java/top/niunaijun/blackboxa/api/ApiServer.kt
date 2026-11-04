@@ -5,7 +5,9 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackbox.core.env.BEnvironment
 import top.niunaijun.blackbox.entity.pm.InstallResult
+import top.niunaijun.blackbox.utils.FileUtils
 import top.niunaijun.blackboxa.task.JobState
 import top.niunaijun.blackboxa.task.TaskCounts
 import top.niunaijun.blackboxa.task.TaskEngine
@@ -36,6 +38,7 @@ import java.util.concurrent.Executors
  * POST /v1/apps/launch    {"package"}
  * POST /v1/apps/stop      {"package"}   (package optional, omit to stop every running app)
  * POST /v1/apps/uninstall {"package"}   (also clears proxy/gaid/device stored for the package)
+ * POST /v1/apps/{pkg}/clear {"config"?} (清空该应用的数据目录，等同 pm clear / 重装)
  * GET  /v1/apps/{pkg}/config
  * POST /v1/apps/{pkg}/config  {"proxy":{...}|null,"gaid":{...}|null,"device":{...}|null}
  *
@@ -214,6 +217,13 @@ object ApiServer {
                 }
                 else -> ApiResult(404, error("unknown endpoint"))
             }
+        }
+        if (segments.size == 4 && (segments[3] == "clear" || segments[3] == "clear-data")) {
+            if (request.method != "POST") {
+                return ApiResult(405, error("method not allowed"))
+            }
+            val body = parseBody(request)
+            return clearAppData(context, segments[2], body.optBoolean("config", true))
         }
         if (segments.size == 4 && segments[3] == "config") {
             val packageName = segments[2]
@@ -505,6 +515,53 @@ object ApiServer {
             ApiResult(200, JSONObject().put("success", true).put("package", packageName))
         } catch (e: Throwable) {
             ApiResult(500, error(e.message ?: e.javaClass.simpleName))
+        }
+    }
+
+    /**
+     * 清空某个虚拟应用的数据目录，效果等同系统 `pm clear` / 重装后的初始状态。
+     *
+     * <p>顺序是「先停进程再删目录」，避免应用正在写数据时删除导致残留；
+     * `config=true`（默认）时同时清掉保存的 proxy / gaid / device。</p>
+     */
+    private fun clearAppData(
+        context: Context,
+        packageName: String,
+        clearConfig: Boolean
+    ): ApiResult {
+        try {
+            try {
+                BlackBoxCore.get().stopPackage(packageName, USER_ID)
+            } catch (e: Throwable) {
+                Log.w(TAG, "stop before clear failed: ${e.message}")
+            }
+            val removed = JSONArray()
+            listOf(
+                BEnvironment.getDataDir(packageName, USER_ID),
+                BEnvironment.getDeDataDir(packageName, USER_ID),
+                BEnvironment.getExternalDataDir(packageName, USER_ID)
+            ).forEach { dir ->
+                if (dir.exists()) {
+                    FileUtils.deleteDir(dir)
+                    if (!dir.exists()) {
+                        removed.put(dir.absolutePath)
+                    }
+                }
+            }
+            if (clearConfig) {
+                ConfigOps.clear(context, packageName)
+            }
+            Log.d(TAG, "cleared data of $packageName, ${removed.length()} dir(s)")
+            return ApiResult(
+                200,
+                JSONObject()
+                    .put("success", true)
+                    .put("package", packageName)
+                    .put("removed", removed)
+                    .put("configCleared", clearConfig)
+            )
+        } catch (e: Throwable) {
+            return ApiResult(500, error(e.message ?: e.javaClass.simpleName))
         }
     }
 
