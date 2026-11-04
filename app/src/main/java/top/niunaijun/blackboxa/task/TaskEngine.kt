@@ -10,6 +10,7 @@ import top.niunaijun.blackbox.core.env.BEnvironment
 import top.niunaijun.blackbox.utils.FileUtils
 import top.niunaijun.blackboxa.api.ConfigOps
 import top.niunaijun.blackboxa.api.Downloader
+import top.niunaijun.blackboxa.api.InstallOps
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
@@ -482,30 +483,17 @@ object TaskEngine {
     }
 
     private fun doInstall(ctx: Context, step: TaskStep): String? {
-        val url = step.params.optString("url", "")
-        val path = step.params.optString("path", "")
-        val packageName = step.params.optString("package", "")
         return try {
-            val result = when {
-                url.isNotEmpty() -> {
-                    val file = Downloader.download(ctx, url)
-                    BlackBoxCore.get().installPackageAsUser(file, USER_ID)
-                }
-
-                path.isNotEmpty() -> BlackBoxCore.get().installPackageAsUser(File(path), USER_ID)
-                else -> BlackBoxCore.get().installPackageAsUser(packageName, USER_ID)
-            }
-            if (!result.success) {
-                return result.msg?.ifEmpty { "install failed" } ?: "install failed"
-            }
-            val config = step.params.optJSONObject("config")
-            if (config != null) {
-                val installed = result.packageName?.takeIf { it.isNotEmpty() } ?: packageName
-                if (installed.isNotEmpty()) {
-                    ConfigOps.apply(ctx, installed, config)
-                }
-            }
-            null
+            val outcome = InstallOps.install(
+                context = ctx,
+                url = step.params.optString("url", ""),
+                path = step.params.optString("path", ""),
+                packageName = step.params.optString("package", ""),
+                config = step.params.optJSONObject("config"),
+                reinstall = step.params.optBoolean("reinstall", true),
+                userId = USER_ID
+            )
+            if (outcome.success) null else outcome.message.ifEmpty { "install failed" }
         } catch (e: Throwable) {
             e.message ?: "install failed"
         }

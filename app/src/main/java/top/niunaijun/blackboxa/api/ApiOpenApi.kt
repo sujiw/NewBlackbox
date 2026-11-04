@@ -96,8 +96,8 @@ object ApiOpenApi {
     "/v1/apps/install": {
       "post": {
         "tags": ["Apps"],
-        "summary": "安装应用",
-        "description": "url / path / package 三选一，按该优先级取第一个非空值。安装成功后可选地立即写入配置。",
+        "summary": "安装应用（默认先卸后装）",
+        "description": "url / path / package 三选一，按该优先级取第一个非空值。reinstall=true（默认）且目标包已存在时，先卸载（同时清除旧配置）再安装；安装成功后可选地立即写入配置。",
         "requestBody": {
           "required": true,
           "content": {
@@ -669,6 +669,11 @@ object ApiOpenApi {
           "url": { "type": "string", "description": "远程地址，容器内下载后安装" },
           "path": { "type": "string", "description": "容器可见路径，如 /sdcard/a.apk" },
           "package": { "type": "string", "description": "设备上已安装的同包名应用" },
+          "reinstall": {
+            "type": "boolean",
+            "default": true,
+            "description": "目标包已存在时是否先卸载再安装"
+          },
           "config": { "${'$'}ref": "#/components/schemas/ConfigUpdate" }
         }
       },
@@ -678,6 +683,7 @@ object ApiOpenApi {
           "success": { "type": "boolean" },
           "package": { "type": "string" },
           "message": { "type": "string" },
+          "reinstalled": { "type": "boolean", "description": "本次是否执行了先卸载旧版本" },
           "config": { "${'$'}ref": "#/components/schemas/ConfigResponse" }
         }
       },

@@ -6,7 +6,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import top.niunaijun.blackbox.BlackBoxCore
 import top.niunaijun.blackbox.core.env.BEnvironment
-import top.niunaijun.blackbox.entity.pm.InstallResult
 import top.niunaijun.blackbox.utils.FileUtils
 import top.niunaijun.blackboxa.task.JobState
 import top.niunaijun.blackboxa.task.TaskCounts
@@ -431,34 +430,29 @@ object ApiServer {
         val url = body.optString("url", "")
         val path = body.optString("path", "")
         val packageName = body.optString("package", "")
-        val result: InstallResult = try {
-            when {
-                url.isNotEmpty() -> {
-                    val file = Downloader.download(context, url)
-                    BlackBoxCore.get().installPackageAsUser(file, USER_ID)
-                }
-                path.isNotEmpty() -> BlackBoxCore.get().installPackageAsUser(File(path), USER_ID)
-                packageName.isNotEmpty() -> BlackBoxCore.get().installPackageAsUser(packageName, USER_ID)
-                else -> return ApiResult(400, error("one of url, path or package is required"))
-            }
+        if (url.isEmpty() && path.isEmpty() && packageName.isEmpty()) {
+            return ApiResult(400, error("one of url, path or package is required"))
+        }
+        val outcome = try {
+            InstallOps.install(
+                context = context,
+                url = url,
+                path = path,
+                packageName = packageName,
+                config = body.optJSONObject("config"),
+                reinstall = body.optBoolean("reinstall", true),
+                userId = USER_ID
+            )
         } catch (e: Throwable) {
             return ApiResult(500, error(e.message ?: e.javaClass.simpleName))
         }
-        val installedPackage = result.packageName?.takeIf { it.isNotEmpty() } ?: packageName
         val response = JSONObject()
-            .put("success", result.success)
-            .put("package", installedPackage)
-            .put("message", result.msg ?: "")
-        if (result.success && installedPackage.isNotEmpty()) {
-            val config = body.optJSONObject("config")
-            if (config != null) {
-                try {
-                    response.put("config", writeConfig(context, installedPackage, config))
-                } catch (e: Throwable) {
-                    Log.w(TAG, "apply config after install failed: ${e.message}")
-                    response.put("config", JSONObject.NULL)
-                }
-            }
+            .put("success", outcome.success)
+            .put("package", outcome.packageName)
+            .put("message", outcome.message)
+            .put("reinstalled", outcome.reinstalled)
+        if (outcome.config != null) {
+            response.put("config", outcome.config)
         }
         return ApiResult(200, response)
     }

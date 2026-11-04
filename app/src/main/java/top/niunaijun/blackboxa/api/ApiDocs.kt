@@ -129,11 +129,14 @@ object ApiDocs {
 
         ${endpoint(
             "POST", "/v1/apps/install",
-            "安装 APK：三者任选其一（按 url → path → package 的优先级取第一个非空值）。安装成功后可选地立即写入配置。",
+            "安装 APK：三者任选其一（按 url → path → package 的优先级取第一个非空值）。" +
+                    "默认<b>先卸后装</b>：目标包已存在时先卸载（连同旧配置），再安装，等价覆盖安装 / 重装。" +
+                    "安装成功后可选地立即写入配置。",
             params(
                 Param("url", "string", "三选一", "远程地址，容器内下载后安装"),
                 Param("path", "string", "三选一", "容器可见的本地路径，如 <code>/sdcard/a.apk</code>"),
                 Param("package", "string", "三选一", "设备上已安装的同包名应用，直接复制进容器"),
+                Param("reinstall", "bool", "否", "默认 <code>true</code>：目标已存在时先卸载再安装；false 则直接覆盖安装"),
                 Param("config", "object", "否", "安装成功后写入的配置，结构同 <code>/v1/apps/{pkg}/config</code>")
             ) + pre(
                 "请求",
@@ -153,6 +156,7 @@ object ApiDocs {
                   "success": true,
                   "package": "com.example.app",
                   "message": "",
+                  "reinstalled": true,
                   "config": { "package": "com.example.app", "proxy": {...}, "gaid": null, "device": {...} }
                 }
                 """.trimIndent()
