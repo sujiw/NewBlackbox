@@ -373,7 +373,7 @@ public final class DeviceInfoManager {
                             } catch (Throwable t) {
                                 Slog.w(TAG, "native setGpuInfo unavailable: " + t.getMessage());
                             }
-                        }, 4000);
+                        }, 10000);
             } catch (Throwable t) {
                 Slog.w(TAG, "schedule setGpuInfo failed: " + t.getMessage());
             }

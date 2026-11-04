@@ -4,7 +4,9 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.ServiceConnection
 import android.content.Intent
 import android.media.AudioManager
 import android.net.wifi.WifiManager
@@ -14,6 +16,8 @@ import android.opengl.GLES20
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
+import android.os.Parcel
 import android.os.StatFs
 import android.provider.Settings
 import android.telephony.TelephonyManager
@@ -25,8 +29,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.TimeZone
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * 设备指纹探针：把 guest 进程实际读到的系统值全部列出来，用于核对容器注入的档案。
@@ -37,6 +44,11 @@ import java.util.TimeZone
 class MainActivity : Activity() {
 
     private lateinit var content: TextView
+
+    /** GAID 要通过绑定 GMS 服务异步取，取到后回填到下一次渲染。 */
+    private var gaidId: String? = null
+    private var gaidLimit: String? = null
+    private var gaidState: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +83,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "copied", Toast.LENGTH_SHORT).show()
         }
         content.text = collect()
+        fetchGaidAsync()
     }
 
     private fun collect(): String {
@@ -264,6 +277,59 @@ class MainActivity : Activity() {
             }
         }
 
+        section("GAID") {
+            line("state", gaidState ?: "(not requested)")
+            line("advertising_id", gaidId ?: "(null)")
+            line("limitAdTracking", gaidLimit ?: "(null)")
+        }
+
+        section("Signature / Installer") {
+            line("cert_sha256", certSha256(packageName))
+            line("signature_count", signatureCount(packageName))
+            if (Build.VERSION.SDK_INT >= 30) {
+                val info = packageManager.getInstallSourceInfo(packageName)
+                line("installer", info.installingPackageName)
+                line("initiating", info.initiatingPackageName)
+                line("originating", info.originatingPackageName)
+            } else {
+                @Suppress("DEPRECATION")
+                line("installer", packageManager.getInstallerPackageName(packageName))
+            }
+            val pkgInfo = packageManager.getPackageInfo(packageName, 0)
+            line("firstInstallTime", pkgInfo.firstInstallTime)
+            line("lastUpdateTime", pkgInfo.lastUpdateTime)
+        }
+
+        section("Sensors") {
+            val sm = getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+            val sensors = sm.getSensorList(android.hardware.Sensor.TYPE_ALL)
+            line("count", sensors.size)
+            sensors.take(8).forEach { sensor ->
+                line(sensor.type.toString(), sensor.name + " / " + sensor.vendor)
+            }
+        }
+
+        section("proc self") {
+            val status = try {
+                File("/proc/self/status").readLines()
+            } catch (t: Throwable) {
+                line("status.read", "! " + t.javaClass.simpleName + ": " + t.message)
+                emptyList<String>()
+            }
+            status.filter {
+                it.startsWith("Name:") || it.startsWith("Pid:") || it.startsWith("PPid:")
+                    || it.startsWith("Threads:") || it.startsWith("VmRSS:")
+                    || it.startsWith("VmSize:") || it.startsWith("Seccomp:")
+            }.forEach { line("status", it.trim()) }
+            val cmdline = try {
+                File("/proc/self/cmdline").readBytes()
+                    .toString(Charsets.UTF_8).trim('\u0000')
+            } catch (t: Throwable) {
+                "! " + t.javaClass.simpleName
+            }
+            line("cmdline", cmdline)
+        }
+
         section("GPU") {
             gpuStrings { k, v -> line(k, v) }
         }
@@ -322,6 +388,128 @@ class MainActivity : Activity() {
         } finally {
             EGL14.eglTerminate(display)
         }
+    }
+
+    /**
+     * 和 GMS 广告 SDK 一样，绑定 AdvertisingIdService 后 transact：
+     * 1 = getId，2 = isLimitAdTrackingEnabled（容器在这里返回注入的 GAID）。
+     */
+    private fun fetchGaidAsync() {
+        gaidState = "binding..."
+        val intent = Intent("com.google.android.gms.ads.identifier.service.START")
+            .setPackage("com.google.android.gms")
+        val latch = CountDownLatch(1)
+        var binder: IBinder? = null
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                binder = service
+                latch.countDown()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                gaidState = "disconnected"
+            }
+        }
+        val bound = try {
+            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        } catch (t: Throwable) {
+            gaidState = "bind failed: " + t.javaClass.simpleName
+            false
+        }
+        if (!bound) {
+            if (gaidState == "binding...") gaidState = "bindService returned false"
+            render()
+            return
+        }
+        Thread {
+            try {
+                if (!latch.await(5, TimeUnit.SECONDS)) {
+                    gaidState = "timeout waiting for service"
+                    return@Thread
+                }
+                val service = binder
+                if (service == null) {
+                    gaidState = "null binder"
+                    return@Thread
+                }
+                gaidId = transactString(service, 1)
+                gaidLimit = transactInt(service, 2)
+                gaidState = "ok"
+            } catch (t: Throwable) {
+                gaidState = "error: " + t.javaClass.simpleName + ": " + t.message
+            } finally {
+                try {
+                    unbindService(connection)
+                } catch (ignored: Throwable) {
+                }
+                render()
+            }
+        }.start()
+    }
+
+    private fun transactString(service: IBinder, code: Int): String? {
+        val data = Parcel.obtain()
+        val reply = Parcel.obtain()
+        return try {
+            data.writeInterfaceToken(
+                "com.google.android.gms.ads.identifier.internal.IAdvertisingIdService"
+            )
+            service.transact(code, data, reply, 0)
+            reply.readException()
+            reply.readString()
+        } finally {
+            reply.recycle()
+            data.recycle()
+        }
+    }
+
+    private fun transactInt(service: IBinder, code: Int): String? {
+        val data = Parcel.obtain()
+        val reply = Parcel.obtain()
+        return try {
+            data.writeInterfaceToken(
+                "com.google.android.gms.ads.identifier.internal.IAdvertisingIdService"
+            )
+            data.writeInt(1)
+            service.transact(code, data, reply, 0)
+            reply.readException()
+            (reply.readInt() != 0).toString()
+        } finally {
+            reply.recycle()
+            data.recycle()
+        }
+    }
+
+    private fun render() {
+        runOnUiThread { content.text = collect() }
+    }
+
+    private fun certSha256(packageName: String): String? {
+        return try {
+            @Suppress("DEPRECATION")
+            val info = packageManager.getPackageInfo(
+                packageName, android.content.pm.PackageManager.GET_SIGNATURES
+            )
+            val signature = info.signatures?.firstOrNull()
+            if (signature == null) {
+                null
+            } else {
+                val digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+                digest.joinToString(":") { String.format("%02X", it) }
+            }
+        } catch (t: Throwable) {
+            "! " + t.javaClass.simpleName
+        }
+    }
+
+    private fun signatureCount(packageName: String): Int = try {
+        @Suppress("DEPRECATION")
+        val info = packageManager.getPackageInfo(
+            packageName, android.content.pm.PackageManager.GET_SIGNATURES
+        )
+        info.signatures?.size ?: 0
+    } catch (t: Throwable) {
+        -1
     }
 
     private fun referrer(): String? = try {
