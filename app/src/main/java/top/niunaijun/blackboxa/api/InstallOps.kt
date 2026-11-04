@@ -46,6 +46,8 @@ object InstallOps {
         referrer: String?,
         userId: Int
     ): Outcome {
+        // 冷启动/服务重启时先等包管理器就绪，否则后面的 install 会拿到 null
+        awaitPackageManager(userId)
         var file: File? = when {
             url.isNotEmpty() -> Downloader.download(context, url)
             path.isNotEmpty() -> File(path)
@@ -87,19 +89,36 @@ object InstallOps {
                 ConfigOps.clear(context, target)
                 reinstalled = true
                 Log.d(TAG, "uninstalled existing $target before reinstall")
+                try {
+                    Thread.sleep(200L)
+                } catch (ignored: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
             } catch (e: Throwable) {
                 Log.w(TAG, "uninstall existing $target failed: ${e.message}")
             }
         }
 
-        // BlackManager 走 binder，服务重启时可能拿到 null，重试一次再报错
-        var result = installOnce(file, packageName, userId)
-        if (result == null) {
-            Log.w(TAG, "install returned null, retrying once")
+        // 卸载会把承载 BPackageManagerService 的进程带走，紧接着的 install 会拿到 null，
+        // 这里等一会儿再带退避重试。
+        var result: top.niunaijun.blackbox.entity.pm.InstallResult? = null
+        var attempt = 0
+        while (result == null && attempt < 5) {
+            if (attempt > 0) {
+                try {
+                    Thread.sleep(300L * attempt)
+                } catch (ignored: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                Log.w(TAG, "install retry #$attempt for ${packageName.ifEmpty { file?.name }}")
+            }
             result = installOnce(file, packageName, userId)
+            attempt++
         }
         if (result == null) {
-            throw IllegalStateException("install service returned null (package manager restarting?)")
+            throw IllegalStateException(
+                "install service returned null after $attempt attempts (package manager restarting?)"
+            )
         }
 
         val installed = result.packageName?.takeIf { it.isNotEmpty() }
@@ -158,6 +177,33 @@ object InstallOps {
     } catch (e: Throwable) {
         Log.w(TAG, "check installed state of $packageName failed: ${e.message}")
         false
+    }
+
+    /** 等到 IBPackageManagerService 可用（最多 [timeoutMs]），避免冷启动瞬间拿到 null。 */
+    private fun awaitPackageManager(userId: Int, timeoutMs: Long = 5000L): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var waited = 0L
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (BlackBoxCore.getBPackageManager().getInstalledPackagesAsUser(userId) != null) {
+                    if (waited > 0) {
+                        Log.d(TAG, "package manager ready after ${waited}ms")
+                    }
+                    return true
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "package manager not ready: ${e.message}")
+            }
+            try {
+                Thread.sleep(200L)
+            } catch (ignored: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+            waited += 200L
+        }
+        Log.w(TAG, "package manager still unavailable after ${timeoutMs}ms")
+        return false
     }
 
     private fun installOnce(
