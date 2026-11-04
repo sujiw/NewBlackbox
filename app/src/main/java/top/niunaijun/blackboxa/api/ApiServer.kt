@@ -30,6 +30,7 @@ import java.util.concurrent.Executors
  * <pre>
  * GET  /v1/ping
  * GET  /v1/docs            (API 文档页，无需 token；/、/docs 等价)
+ * GET  /v1/openapi.json    (OpenAPI 3.0 描述，无需 token；/openapi.json 等价)
  * GET  /v1/apps
  * POST /v1/apps/install   {"url"|"path"|"package", "config":{...}}   (config optional, same shape as below)
  * POST /v1/apps/launch    {"package"}
@@ -125,6 +126,14 @@ object ApiServer {
                 val request = readRequest(socket.getInputStream()) ?: return
                 val output = socket.getOutputStream()
                 val context = appContext ?: return
+                if (request.method == "GET" && isOpenApiPath(request.path)) {
+                    val spec = ApiOpenApi.json(
+                        "http://${NetworkUtils.localAddress()}:${ApiSettings.port(context)}"
+                    )
+                    respondRaw(output, 200, "application/json; charset=utf-8",
+                        spec.toByteArray(Charsets.UTF_8))
+                    return
+                }
                 if (request.method == "GET" && isDocsPath(request.path)) {
                     val html = ApiDocs.html(
                         NetworkUtils.localAddress(),
@@ -525,6 +534,10 @@ object ApiServer {
     /** `/`、`/docs`、`/v1/docs` 都指向内置文档页。 */
     private fun isDocsPath(path: String): Boolean =
         path == "/" || path == "/docs" || path == "/v1/docs"
+
+    /** OpenAPI 描述文件，同样免 token。 */
+    private fun isOpenApiPath(path: String): Boolean =
+        path == "/openapi.json" || path == "/v1/openapi.json"
 
     private fun respondRaw(output: OutputStream, code: Int, contentType: String, payload: ByteArray) {
         val header = "HTTP/1.1 $code ${reason(code)}\r\n" +

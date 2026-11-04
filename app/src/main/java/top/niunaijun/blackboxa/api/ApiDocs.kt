@@ -59,7 +59,8 @@ object ApiDocs {
         "taskmode" to "任务模式",
         "models" to "数据模型",
         "steps" to "任务步骤",
-        "examples" to "完整示例"
+        "examples" to "完整示例",
+        "openapi" to "OpenAPI"
     )
 
     private fun overview(base: String) = section(
@@ -112,6 +113,8 @@ object ApiDocs {
         ))}
         <p>文档页 <code>/v1/docs</code>、<code>/docs</code>、<code>/</code> 不需要 token，可直接用浏览器打开：
         <code>$base/v1/docs</code></p>
+        <p>需要导入 Postman / Apifox / Swagger UI 时用 OpenAPI 描述：
+        <code>$base/v1/openapi.json</code></p>
     """.trimIndent()
     )
 
