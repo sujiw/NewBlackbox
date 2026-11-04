@@ -270,10 +270,19 @@ void InstallHooks() {
     }
     gShadowHookReady = true;
 
-    HookSymbol("libc.so", "openat", reinterpret_cast<void *>(HookOpenat),
-               reinterpret_cast<void **>(&gOrigOpenat));
-    HookSymbol("libc.so", "open", reinterpret_cast<void *>(HookOpen),
-               reinterpret_cast<void **>(&gOrigOpen));
+    // native 层的 open/openat 重定向默认关闭：Java 侧 OsStub 已经覆盖了
+    // File/FileInputStream 读 /proc 的路径，再叠一层 ShadowHook 会让部分 open
+    // 返回 EAGAIN（实测 /proc/cpuinfo）。需要覆盖 C/C++ 读文件时再打开。
+    char procHook[PROP_VALUE_MAX] = {0};
+    if (__system_property_get("debug.bb.native_proc_hook", procHook) > 0
+            && procHook[0] == '1') {
+        HookSymbol("libc.so", "openat", reinterpret_cast<void *>(HookOpenat),
+                   reinterpret_cast<void **>(&gOrigOpenat));
+        HookSymbol("libc.so", "open", reinterpret_cast<void *>(HookOpen),
+                   reinterpret_cast<void **>(&gOrigOpen));
+    } else {
+        DEVHOOK_LOGD("native proc hook disabled (debug.bb.native_proc_hook != 1)");
+    }
     char clockEnabled[PROP_VALUE_MAX] = {0};
     if (__system_property_get("debug.bb.native_clock", clockEnabled) > 0
             && clockEnabled[0] == '1') {

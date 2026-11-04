@@ -51,8 +51,12 @@ public class IPhoneSubInfoProxy extends ClassInvocationStub {
         }
     }
 
-    private static Object realOr(Object who, Method method, Object[] args, String value) throws Throwable {
-        return value != null ? value : method.invoke(who, args);
+    /**
+     * 档案里没给就返回 null：不能回落到真实调用 —— 虚拟包名去查系统 provider 会抛
+     * SecurityException，被代理包成 UndeclaredThrowableException 抛给应用。
+     */
+    private static Object realOr(Object who, Method method, Object[] args, String value) {
+        return value != null && !value.isEmpty() ? value : null;
     }
 
     @ProxyMethod("getDeviceId")
@@ -83,8 +87,7 @@ public class IPhoneSubInfoProxy extends ClassInvocationStub {
     public static class getMeidForSubscriber extends MethodHook {
         @Override
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            String meid = DeviceInfoManager.meid();
-            return realOr(who, method, args, meid != null ? meid : DeviceInfoManager.imei());
+            return DeviceInfoManager.meid();
         }
     }
 

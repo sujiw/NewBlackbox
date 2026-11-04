@@ -37,3 +37,4 @@ rootProject.name = "vspace-fully-fixed"
 
 include ':app'
 include ':Bcore'
+include ':probe'

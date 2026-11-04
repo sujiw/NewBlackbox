@@ -3,6 +3,7 @@ package top.niunaijun.blackbox.fake.service.context.providers;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.IInterface;
 import black.android.content.BRAttributionSource;
 import java.lang.reflect.Method;
@@ -55,6 +56,10 @@ public class ContentProviderStub extends ClassInvocationStub implements BContent
         }
         // 设备档案里的 Settings 值（android_id …）优先于系统 provider：这里直接返回，
         // 不再走真实查询（虚拟包名会被系统 provider 以 uid 不匹配拒绝）。
+        Object settingCall = settingsCallOverride(method, args);
+        if (settingCall != null) {
+            return settingCall;
+        }
         String settingValue = settingsOverrideValue(method, args);
         if (settingValue != null) {
             return settingCursor(settingValue);
@@ -117,6 +122,50 @@ public class ContentProviderStub extends ClassInvocationStub implements BContent
             current = next;
         }
         return current;
+    }
+
+    /**
+     * Android 9+ 的 {@code Settings.Secure.getString()} 走的是 provider 的
+     * {@code call("GET_secure", authority, key, extras)} 而不是 query，这里返回
+     * Bundle（键 "value"），否则系统 provider 会以 uid 不匹配抛 SecurityException。
+     */
+    private Object settingsCallOverride(Method method, Object[] args) {
+        try {
+            if (!"call".equals(method.getName()) || args == null) {
+                return null;
+            }
+            String callMethod = null;
+            String key = null;
+            for (Object arg : args) {
+                if (arg instanceof String) {
+                    String text = (String) arg;
+                    if (text.startsWith("GET_")) {
+                        callMethod = text;
+                    } else if (DeviceInfoManager.getSecureSetting(text) != null) {
+                        key = text;
+                    }
+                } else if (arg instanceof Bundle) {
+                    Bundle extras = (Bundle) arg;
+                    for (String name : extras.keySet()) {
+                        Object value = extras.get(name);
+                        if (value instanceof String
+                                && DeviceInfoManager.getSecureSetting((String) value) != null) {
+                            key = (String) value;
+                        }
+                    }
+                }
+            }
+            if (callMethod == null || key == null) {
+                return null;
+            }
+            String value = DeviceInfoManager.getSecureSetting(key);
+            Bundle result = new Bundle();
+            result.putString("value", value);
+            Slog.d(TAG, "settings " + callMethod + " " + key + " -> " + value);
+            return result;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** Settings.Secure/System/Global 单 key 查询 -> 档案值（没有则返回 null）。 */

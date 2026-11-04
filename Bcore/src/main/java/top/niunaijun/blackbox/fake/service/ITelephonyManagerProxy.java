@@ -75,8 +75,8 @@ public class ITelephonyManagerProxy extends BinderInvocationStub {
     public static class GetMeidForSlot extends MethodHook {
         @Override // top.niunaijun.blackbox.fake.hook.MethodHook
         protected Object hook(Object who, Method method, Object[] args) throws Throwable {
-            String meid = DeviceInfoManager.meid();
-            return idOrFallback(meid != null ? meid : DeviceInfoManager.imei());
+            // 档案没给 MEID 就返回 null，不要用 IMEI 冒充
+            return DeviceInfoManager.meid();
         }
     }
 

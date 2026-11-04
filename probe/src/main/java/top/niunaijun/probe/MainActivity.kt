@@ -1,0 +1,340 @@
+package top.niunaijun.probe
+
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.media.AudioManager
+import android.net.wifi.WifiManager
+import android.opengl.EGL14
+import android.opengl.EGLConfig
+import android.opengl.GLES20
+import android.os.BatteryManager
+import android.os.Build
+import android.os.Bundle
+import android.os.StatFs
+import android.provider.Settings
+import android.telephony.TelephonyManager
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import java.io.File
+import java.util.Locale
+import java.util.TimeZone
+
+/**
+ * 设备指纹探针：把 guest 进程实际读到的系统值全部列出来，用于核对容器注入的档案。
+ *
+ * 覆盖 Build / VERSION / ABI / 显示 / 语言时区 / android_id / 电话 / WiFi /
+ * 电池 / 音量 / 内存存储 / proc 文件 / GL 字符串 / 启动来源。
+ */
+class MainActivity : Activity() {
+
+    private lateinit var content: TextView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val refresh = Button(this).apply { text = "刷新" }
+        val copy = Button(this).apply { text = "复制" }
+        bar.addView(refresh)
+        bar.addView(copy)
+
+        content = TextView(this).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 10.5f
+            setTextIsSelectable(true)
+            setPadding(16, 16, 16, 16)
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(bar)
+            addView(
+                ScrollView(this@MainActivity).apply { addView(content) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            )
+        }
+        setContentView(root)
+
+        refresh.setOnClickListener { content.text = collect() }
+        copy.setOnClickListener {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("device-probe", content.text))
+            Toast.makeText(this, "copied", Toast.LENGTH_SHORT).show()
+        }
+        content.text = collect()
+    }
+
+    private fun collect(): String {
+        val sb = StringBuilder()
+        val started = System.currentTimeMillis()
+
+        fun section(name: String, block: () -> Unit) {
+            sb.append("== ").append(name).append(" ==\n")
+            try {
+                block()
+            } catch (t: Throwable) {
+                sb.append("  ! ").append(t.javaClass.simpleName).append(": ")
+                    .append(t.message).append('\n')
+            }
+            sb.append('\n')
+        }
+
+        fun line(key: String, value: Any?) {
+            val text = value?.toString() ?: "null"
+            sb.append("  ").append(key.padEnd(24)).append(": ").append(text).append('\n')
+        }
+
+        fun attempt(key: String, block: () -> Any?) {
+            try {
+                line(key, block())
+            } catch (t: Throwable) {
+                line(key, "! " + t.javaClass.simpleName + ": " + t.message)
+            }
+        }
+
+        section("App") {
+            line("package", packageName)
+            line("pid", android.os.Process.myPid())
+            line("process", currentProcessName())
+            line("uptimeMs", android.os.SystemClock.elapsedRealtime())
+            line("referrer", referrer())
+        }
+
+        section("Build") {
+            line("BRAND", Build.BRAND)
+            line("MODEL", Build.MODEL)
+            line("MANUFACTURER", Build.MANUFACTURER)
+            line("DEVICE", Build.DEVICE)
+            line("PRODUCT", Build.PRODUCT)
+            line("BOARD", Build.BOARD)
+            line("HARDWARE", Build.HARDWARE)
+            line("ID", Build.ID)
+            line("DISPLAY", Build.DISPLAY)
+            line("TYPE", Build.TYPE)
+            line("TAGS", Build.TAGS)
+            line("BOOTLOADER", Build.BOOTLOADER)
+            if (Build.VERSION.SDK_INT >= 26) {
+                line("SERIAL", try { Build.getSerial() } catch (t: Throwable) { "<${t.javaClass.simpleName}>" })
+            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                line("SOC_MANUFACTURER", Build.SOC_MANUFACTURER)
+                line("SOC_MODEL", Build.SOC_MODEL)
+            }
+            line("FINGERPRINT", Build.FINGERPRINT)
+        }
+
+        section("VERSION") {
+            line("RELEASE", Build.VERSION.RELEASE)
+            line("SDK_INT", Build.VERSION.SDK_INT)
+            line("CODENAME", Build.VERSION.CODENAME)
+            line("INCREMENTAL", Build.VERSION.INCREMENTAL)
+            line("SECURITY_PATCH", Build.VERSION.SECURITY_PATCH)
+        }
+
+        section("ABI") {
+            line("SUPPORTED_ABIS", Build.SUPPORTED_ABIS.joinToString())
+            line("SUPPORTED_32_BIT", Build.SUPPORTED_32_BIT_ABIS.joinToString())
+            line("SUPPORTED_64_BIT", Build.SUPPORTED_64_BIT_ABIS.joinToString())
+            line("os.arch", System.getProperty("os.arch"))
+            line("os.name", System.getProperty("os.name"))
+            line("java.vm.version", System.getProperty("java.vm.version"))
+        }
+
+        section("Display") {
+            val metrics = resources.displayMetrics
+            val config = resources.configuration
+            line("widthPixels", metrics.widthPixels)
+            line("heightPixels", metrics.heightPixels)
+            line("densityDpi", metrics.densityDpi)
+            line("density", metrics.density)
+            line("xdpi / ydpi", "${metrics.xdpi} / ${metrics.ydpi}")
+            line("screenWidthDp", config.screenWidthDp)
+            line("screenHeightDp", config.screenHeightDp)
+            line("smallestWidthDp", config.smallestScreenWidthDp)
+            line("orientation", config.orientation)
+            line("screenLayout", Integer.toHexString(config.screenLayout))
+            line("densityDpi(config)", config.densityDpi)
+        }
+
+        section("Locale / TimeZone") {
+            val locale = Locale.getDefault()
+            line("Locale", locale.toString())
+            line("language", locale.language)
+            line("country", locale.country)
+            line("TimeZone", TimeZone.getDefault().id)
+            line("now", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US)
+                .format(java.util.Date()))
+        }
+
+        section("Settings") {
+            line("android_id", Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
+            line("device_name", Settings.Global.getString(contentResolver, "device_name"))
+            line("bluetooth_name", Settings.Secure.getString(contentResolver, "bluetooth_name"))
+        }
+
+        section("Telephony") {
+            val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            line("phoneType", tm.phoneType)
+            line("simState", tm.simState)
+            line("networkType", tm.networkType)
+            line("networkOperatorName", tm.networkOperatorName)
+            line("networkOperator", tm.networkOperator)
+            line("simOperatorName", tm.simOperatorName)
+            line("simOperator", tm.simOperator)
+            line("simCountryIso", tm.simCountryIso)
+            line("networkCountryIso", tm.networkCountryIso)
+            line("isNetworkRoaming", tm.isNetworkRoaming)
+            attempt("deviceId") { tm.deviceId }
+            attempt("imei(slot0)") { if (Build.VERSION.SDK_INT >= 26) tm.getImei(0) else null }
+            attempt("imei(slot1)") { if (Build.VERSION.SDK_INT >= 26) tm.getImei(1) else null }
+            attempt("meid") { if (Build.VERSION.SDK_INT >= 26) tm.getMeid() else null }
+            attempt("subscriberId(IMSI)") { tm.subscriberId }
+            attempt("simSerial(ICCID)") { tm.simSerialNumber }
+            attempt("line1Number") { tm.line1Number }
+        }
+
+        section("WiFi") {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            @Suppress("DEPRECATION")
+            val info = wm.connectionInfo
+            line("SSID", info?.ssid)
+            line("BSSID", info?.bssid)
+            @Suppress("DEPRECATION")
+            line("MAC", info?.macAddress)
+            @Suppress("DEPRECATION")
+            line("ipAddress", intToIp(info?.ipAddress ?: 0))
+        }
+
+        section("Battery / Audio") {
+            val intent = registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            line("level", intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1))
+            line("scale", intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1))
+            line("status", intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1))
+            line("plugged", intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1))
+            line("temperature", intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1))
+            line("voltage", intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1))
+            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            line("volume", am.getStreamVolume(AudioManager.STREAM_MUSIC))
+            line("volumeMax", am.getStreamMaxVolume(AudioManager.STREAM_MUSIC))
+        }
+
+        section("Memory / Storage") {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val mem = ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mem)
+            line("totalMem", mem.totalMem)
+            line("availMem", mem.availMem)
+            line("lowMemory", mem.lowMemory)
+            val stat = StatFs(filesDir.absolutePath)
+            line("data.totalBytes", stat.totalBytes)
+            line("data.availableBytes", stat.availableBytes)
+            line("data.blockSize", stat.blockSizeLong)
+        }
+
+        section("proc") {
+            val cpu = File("/proc/cpuinfo")
+            line("cpuinfo.exists", cpu.exists())
+            line("cpuinfo.length", cpu.length())
+            val cpuText = try {
+                cpu.readText()
+            } catch (t: Throwable) {
+                line("cpuinfo.read", "! " + t.javaClass.simpleName + ": " + t.message)
+                ""
+            }
+            cpuText.lineSequence().take(2).forEachIndexed { index, text ->
+                line("cpuinfo[$index]", text)
+            }
+            val memText = try {
+                File("/proc/meminfo").readText()
+            } catch (t: Throwable) {
+                line("meminfo.read", "! " + t.javaClass.simpleName + ": " + t.message)
+                ""
+            }
+            memText.lineSequence().take(3).forEach { text ->
+                line("meminfo", text.trim())
+            }
+        }
+
+        section("GPU") {
+            gpuStrings { k, v -> line(k, v) }
+        }
+
+        sb.append("---- collected in ").append(System.currentTimeMillis() - started).append("ms\n")
+        return sb.toString()
+    }
+
+    /** EGL 离屏上下文里读 GL 字符串；容器会替换 GLES20.glGetString 的 RENDERER / VENDOR。 */
+    private fun gpuStrings(line: (String, Any?) -> Unit) {
+        val display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+        if (display == EGL14.EGL_NO_DISPLAY) {
+            line("egl", "no display")
+            return
+        }
+        val version = IntArray(2)
+        if (!EGL14.eglInitialize(display, version, 0, version, 1)) {
+            line("eglInitialize", "failed")
+            return
+        }
+        try {
+            val configs = arrayOfNulls<EGLConfig>(1)
+            val count = IntArray(1)
+            val renderable = intArrayOf(
+                EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+                EGL14.EGL_SURFACE_TYPE, EGL14.EGL_PBUFFER_BIT,
+                EGL14.EGL_NONE
+            )
+            EGL14.eglChooseConfig(display, renderable, 0, configs, 0, 1, count, 0)
+            val config = configs[0] ?: run {
+                line("eglConfig", "none")
+                return
+            }
+            val context = EGL14.eglCreateContext(
+                display, config, EGL14.EGL_NO_CONTEXT,
+                intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE), 0
+            )
+            val surface = EGL14.eglCreatePbufferSurface(
+                display, config,
+                intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE), 0
+            )
+            if (!EGL14.eglMakeCurrent(display, surface, surface, context)) {
+                line("eglMakeCurrent", "failed")
+                return
+            }
+            line("GL_VENDOR", GLES20.glGetString(GLES20.GL_VENDOR))
+            line("GL_RENDERER", GLES20.glGetString(GLES20.GL_RENDERER))
+            line("GL_VERSION", GLES20.glGetString(GLES20.GL_VERSION))
+            line("EGL_VENDOR", EGL14.eglQueryString(display, EGL14.EGL_VENDOR))
+            line("EGL_VERSION", EGL14.eglQueryString(display, EGL14.EGL_VERSION))
+            EGL14.eglMakeCurrent(
+                display, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT
+            )
+            EGL14.eglDestroySurface(display, surface)
+            EGL14.eglDestroyContext(display, context)
+        } finally {
+            EGL14.eglTerminate(display)
+        }
+    }
+
+    private fun referrer(): String? = try {
+        val fromApi = getReferrer()?.toString()
+        val fromIntent = intent?.getParcelableExtra<android.os.Parcelable>(Intent.EXTRA_REFERRER)?.toString()
+        "getReferrer()=$fromApi, extra=$fromIntent"
+    } catch (t: Throwable) {
+        "error: ${t.javaClass.simpleName}"
+    }
+
+    private fun currentProcessName(): String? =
+        if (Build.VERSION.SDK_INT >= 28) android.app.Application.getProcessName() else null
+
+    private fun intToIp(ip: Int): String =
+        "${ip and 0xff}.${ip shr 8 and 0xff}.${ip shr 16 and 0xff}.${ip shr 24 and 0xff}"
+}
