@@ -29,6 +29,7 @@ import java.util.concurrent.Executors
  *
  * <pre>
  * GET  /v1/ping
+ * GET  /v1/docs            (API 文档页，无需 token；/、/docs 等价)
  * GET  /v1/apps
  * POST /v1/apps/install   {"url"|"path"|"package", "config":{...}}   (config optional, same shape as below)
  * POST /v1/apps/launch    {"package"}
@@ -55,7 +56,7 @@ import java.util.concurrent.Executors
 object ApiServer {
 
     private const val TAG = "ApiServer"
-    private const val VERSION = 1
+    const val VERSION = 1
 
     /** The container is single user, every api call uses user 0. */
     private const val USER_ID = 0
@@ -124,6 +125,15 @@ object ApiServer {
                 val request = readRequest(socket.getInputStream()) ?: return
                 val output = socket.getOutputStream()
                 val context = appContext ?: return
+                if (request.method == "GET" && isDocsPath(request.path)) {
+                    val html = ApiDocs.html(
+                        NetworkUtils.localAddress(),
+                        ApiSettings.port(context),
+                        ApiSettings.token(context)
+                    )
+                    respondRaw(output, 200, "text/html; charset=utf-8", html.toByteArray(Charsets.UTF_8))
+                    return
+                }
                 if (request.headers["x-api-token"] != ApiSettings.token(context)) {
                     respond(output, 401, error("invalid token"))
                     return
@@ -147,7 +157,14 @@ object ApiServer {
             return ApiResult(404, error("unknown endpoint"))
         }
         if (segments.size == 2 && segments[1] == "ping") {
-            return ApiResult(200, JSONObject().put("ok", true).put("version", VERSION))
+            return ApiResult(
+                200,
+                JSONObject()
+                    .put("ok", true)
+                    .put("version", VERSION)
+                    .put("port", ApiSettings.port(context))
+                    .put("docs", "/v1/docs")
+            )
         }
         TaskEngine.ensureInit(context)
         when (segments[1]) {
@@ -504,6 +521,20 @@ object ApiServer {
 
     private fun error(message: String): JSONObject =
         JSONObject().put("success", false).put("error", message)
+
+    /** `/`、`/docs`、`/v1/docs` 都指向内置文档页。 */
+    private fun isDocsPath(path: String): Boolean =
+        path == "/" || path == "/docs" || path == "/v1/docs"
+
+    private fun respondRaw(output: OutputStream, code: Int, contentType: String, payload: ByteArray) {
+        val header = "HTTP/1.1 $code ${reason(code)}\r\n" +
+                "Content-Type: $contentType\r\n" +
+                "Content-Length: ${payload.size}\r\n" +
+                "Connection: close\r\n\r\n"
+        output.write(header.toByteArray(Charsets.US_ASCII))
+        output.write(payload)
+        output.flush()
+    }
 
     private fun respond(output: OutputStream, code: Int, body: JSONObject) {
         val payload = body.toString().toByteArray(Charsets.UTF_8)

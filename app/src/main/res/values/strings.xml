@@ -193,6 +193,8 @@
     <string name="task_cancel">Cancel</string>
     <string name="task_empty_hint">No tasks yet.\nPOST jobs to /v1/tasks, they run one by one.</string>
     <string name="task_api_hint">API http://%1$s:%2$d</string>
+    <string name="task_api_docs">Docs http://%1$s:%2$d/v1/docs</string>
+    <string name="task_api_docs_open">Open API docs</string>
     <string name="task_stopped_count">Stopped %1$d task(s)</string>
     <string name="task_cleared_count">Cleared %1$d task(s)</string>
     <string name="task_exit_title">Leave task mode?</string>

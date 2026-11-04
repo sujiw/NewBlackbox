@@ -1,5 +1,7 @@
 package top.niunaijun.blackboxa.view.task
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -30,6 +32,16 @@ class TaskConsoleFragment : Fragment() {
 
     private lateinit var adapter: TaskAdapter
 
+    /** 用系统浏览器打开内置文档页（/v1/docs 不需要 token）。 */
+    private fun openApiDocs(host: String, port: Int) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://$host:$port/v1/docs")))
+        } catch (e: Exception) {
+            Log.w(TAG, "open api docs failed: ${e.message}")
+            requireContext().toast(getString(R.string.task_api_docs_open))
+        }
+    }
+
     override fun onCreateView(
         inflater: android.view.LayoutInflater,
         container: ViewGroup?,
@@ -42,11 +54,11 @@ class TaskConsoleFragment : Fragment() {
             viewBinding.taskRecycler.layoutManager = LinearLayoutManager(requireContext())
             viewBinding.taskRecycler.adapter = adapter
 
-            viewBinding.apiHint.text = getString(
-                R.string.task_api_hint,
-                NetworkUtils.localAddress(),
-                ApiSettings.port(requireContext())
-            )
+            val host = NetworkUtils.localAddress()
+            val port = ApiSettings.port(requireContext())
+            viewBinding.apiHint.text = getString(R.string.task_api_hint, host, port) + "\n" +
+                    getString(R.string.task_api_docs, host, port)
+            viewBinding.apiHint.setOnClickListener { openApiDocs(host, port) }
 
             viewBinding.pauseButton.setOnClickListener {
                 val paused = !TaskMode.isPaused(requireContext())

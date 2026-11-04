@@ -107,8 +107,17 @@ class AutomationActivity : LoadingActivity() {
         if (viewBinding.apiSwitch.isChecked != enabled) {
             viewBinding.apiSwitch.isChecked = enabled
         }
-        viewBinding.apiAddress.text =
-            "http://${NetworkUtils.localAddress()}:${ApiSettings.port(this)}"
+        val host = NetworkUtils.localAddress()
+        val port = ApiSettings.port(this)
+        viewBinding.apiAddress.text = "http://$host:$port\n" +
+                getString(R.string.task_api_docs, host, port)
+        viewBinding.apiAddress.setOnClickListener {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://$host:$port/v1/docs")))
+            } catch (e: Exception) {
+                Log.w("Automation", "open api docs failed: ${e.message}")
+            }
+        }
         refreshToken()
     }
 
