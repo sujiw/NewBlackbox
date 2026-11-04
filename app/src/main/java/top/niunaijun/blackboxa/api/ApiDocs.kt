@@ -135,7 +135,7 @@ object ApiDocs {
             params(
                 Param("url", "string", "三选一", "远程地址，容器内下载后安装"),
                 Param("path", "string", "三选一", "容器可见的本地路径，如 <code>/sdcard/a.apk</code>"),
-                Param("package", "string", "三选一", "设备上已安装的同包名应用，直接复制进容器"),
+                Param("package", "string", "三选一", "设备上已安装的同包名应用，直接复制进容器；设备上没有时会退回容器内已安装的 APK 重装"),
                 Param("reinstall", "bool", "否", "默认 <code>true</code>：目标已存在时先卸载再安装；false 则直接覆盖安装"),
                 Param("referrer", "string|object", "否",
                     "Play 安装来源。可直接给裸串 <code>adjust_reftag=cwKyD4chsBr9n</code>，" +

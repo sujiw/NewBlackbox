@@ -453,6 +453,8 @@ object ApiServer {
                 referrer = referrer,
                 userId = USER_ID
             )
+        } catch (e: IllegalArgumentException) {
+            return ApiResult(400, error(e.message ?: "invalid install request"))
         } catch (e: Throwable) {
             return ApiResult(500, error(e.message ?: e.javaClass.simpleName))
         }

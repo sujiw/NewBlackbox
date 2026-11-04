@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONObject
 import top.niunaijun.blackbox.BlackBoxCore
+import top.niunaijun.blackbox.core.env.BEnvironment
+import top.niunaijun.blackbox.utils.FileUtils
 import top.niunaijun.blackboxa.bean.AppReferrerConfig
 import top.niunaijun.blackboxa.bean.AppReferrerStore
 import java.io.File
@@ -44,16 +46,39 @@ object InstallOps {
         referrer: String?,
         userId: Int
     ): Outcome {
-        val file: File? = when {
+        var file: File? = when {
             url.isNotEmpty() -> Downloader.download(context, url)
             path.isNotEmpty() -> File(path)
             else -> null
         }
-        // url / path 场景要解析 apk 才能知道包名；解析失败就退回请求里的 package
-        val target = when {
-            file != null -> archivePackageName(context, file) ?: packageName
-            else -> packageName
+        // url / path 场景要解析 apk 才能知道包名
+        var archiveName = if (file != null) archivePackageName(context, file) else null
+        if (file != null && archiveName == null) {
+            throw IllegalArgumentException("invalid apk: ${file.name}")
         }
+
+        // package 源：设备上找不到就退回容器内已安装的 APK，避免「先卸载再发现没有源」
+        if (file == null) {
+            if (hostHasPackage(context, packageName)) {
+                archiveName = packageName
+            } else if (isInstalled(packageName, userId)) {
+                val installed = containerApk(packageName)
+                    ?: throw IllegalArgumentException(
+                        "package $packageName has no usable apk in container"
+                    )
+                val cached = File(context.cacheDir, "reinstall-${System.currentTimeMillis()}.apk")
+                FileUtils.copyFile(installed, cached)
+                file = cached
+                archiveName = packageName
+                Log.d(TAG, "reinstall source: container apk ${installed.absolutePath}")
+            } else {
+                throw IllegalArgumentException(
+                    "package $packageName is not installed on the device or in the container"
+                )
+            }
+        }
+
+        val target = archiveName ?: packageName
 
         var reinstalled = false
         if (reinstall && target.isNotEmpty() && isInstalled(target, userId)) {
@@ -67,10 +92,14 @@ object InstallOps {
             }
         }
 
-        val result = when {
-            file != null -> BlackBoxCore.get().installPackageAsUser(file, userId)
-            packageName.isNotEmpty() -> BlackBoxCore.get().installPackageAsUser(packageName, userId)
-            else -> throw IllegalArgumentException("one of url, path or package is required")
+        // BlackManager 走 binder，服务重启时可能拿到 null，重试一次再报错
+        var result = installOnce(file, packageName, userId)
+        if (result == null) {
+            Log.w(TAG, "install returned null, retrying once")
+            result = installOnce(file, packageName, userId)
+        }
+        if (result == null) {
+            throw IllegalStateException("install service returned null (package manager restarting?)")
         }
 
         val installed = result.packageName?.takeIf { it.isNotEmpty() }
@@ -113,11 +142,56 @@ object InstallOps {
         )
     }
 
+    /**
+     * 以「已安装列表」为准：BlackManager 的 isInstalled() 走 binder，
+     * 服务重启/降级时会返回 false 负值，导致跳过卸载或误判未安装。
+     */
     fun isInstalled(packageName: String, userId: Int): Boolean = try {
-        BlackBoxCore.get().isInstalled(packageName, userId)
+        val listed = BlackBoxCore.getBPackageManager()
+            .getInstalledPackagesAsUser(userId)
+            .any { it.packageName == packageName }
+        if (listed) {
+            true
+        } else {
+            BlackBoxCore.get().isInstalled(packageName, userId)
+        }
     } catch (e: Throwable) {
         Log.w(TAG, "check installed state of $packageName failed: ${e.message}")
         false
+    }
+
+    private fun installOnce(
+        file: File?,
+        packageName: String,
+        userId: Int
+    ): top.niunaijun.blackbox.entity.pm.InstallResult? = try {
+        when {
+            file != null -> BlackBoxCore.get().installPackageAsUser(file, userId)
+            packageName.isNotEmpty() -> BlackBoxCore.get().installPackageAsUser(packageName, userId)
+            else -> throw IllegalArgumentException("one of url, path or package is required")
+        }
+    } catch (e: IllegalArgumentException) {
+        throw e
+    } catch (e: Throwable) {
+        Log.w(TAG, "install attempt failed: ${e.message}")
+        null
+    }
+
+    /** 设备（宿主 PackageManager）上是否存在该包，用于判断 package 源能不能直接复制。 */
+    private fun hostHasPackage(context: Context, packageName: String): Boolean = try {
+        context.packageManager.getPackageInfo(packageName, 0) != null
+    } catch (e: Throwable) {
+        false
+    }
+
+    /** 容器内已安装应用的 base.apk（重装时可以拿它当源）。 */
+    private fun containerApk(packageName: String): File? = try {
+        // 注意：getBaseApkDir 返回的就是 base.apk 文件本身
+        val apk = BEnvironment.getBaseApkDir(packageName)
+        if (apk != null && apk.exists()) apk else null
+    } catch (e: Throwable) {
+        Log.w(TAG, "locate container apk of $packageName failed: ${e.message}")
+        null
     }
 
     private fun archivePackageName(context: Context, file: File): String? = try {

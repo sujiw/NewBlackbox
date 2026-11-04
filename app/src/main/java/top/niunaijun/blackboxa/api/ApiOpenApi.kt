@@ -668,7 +668,7 @@ object ApiOpenApi {
         "properties": {
           "url": { "type": "string", "description": "远程地址，容器内下载后安装" },
           "path": { "type": "string", "description": "容器可见路径，如 /sdcard/a.apk" },
-          "package": { "type": "string", "description": "设备上已安装的同包名应用" },
+          "package": { "type": "string", "description": "设备上已安装的同包名应用；设备上没有则用容器内已安装的 APK 重装" },
           "reinstall": {
             "type": "boolean",
             "default": true,
